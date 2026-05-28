@@ -111,7 +111,7 @@ def main():
     # process which gets its own _violation_queue, severing the watcher->SSE link.
     use_reloader = not args.live
     app.run(host=host, port=port, debug=config["dashboard"]["debug"],
-            use_reloader=use_reloader)
+            use_reloader=use_reloader, threaded=True)
 
 
 if __name__ == "__main__":
