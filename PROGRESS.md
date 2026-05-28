@@ -280,3 +280,32 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase U1 — Log File Watcher
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `tail_file` reads only new lines written after it starts — never historical lines
+- [x] `LogWatcher.start()` spawns two daemon threads (one per log file)
+- [x] `on_violation` is called within 2 seconds of a matching line being written to the file
+- [x] Watcher survives a temporarily missing or unreadable file without crashing
+- [x] All 8 tests in `tests/test_watcher.py` pass
+- [x] All 100 existing tests still pass (108 total)
+
+**What was built:**
+`src/ingestion/watcher.py`:
+- `tail_file(filepath, log_type, callback, poll_interval=0.5, stop_event=None)` — opens file, seeks to end to skip existing content, loops calling `callback(line, log_type)` for every new line; catches FileNotFoundError and other exceptions, logs a warning, and retries — never crashes.
+- `LogWatcher` class — `__init__` stores config and creates a `threading.Event` stop flag and per-username `deque` buffer for rolling failed-login detection. `start()` spawns two daemon threads via `tail_file`, one per log file. `stop()` sets the stop flag. Per-line processing: auth FAILED lines update the rolling buffer and emit a `failed_logins` violation when count exceeds the threshold; auth SUCCESS lines are checked against off-hours rules; web lines are checked for unauthorized access. All violations are scored before `on_violation` is called.
+`tests/test_watcher.py` — 8 tests covering: new lines delivered, existing lines skipped, correct log_type passed to callback, thread survival on missing file, two daemon threads spawned, brute force triggers violation with all 10 scored keys, no crash on missing file, violation delivered within 2 seconds.
+
+**What didn't work and how it was fixed:**
+Nothing significant. Per-line processing reuses the existing `detect_unauthorized_access` and `detect_off_hours_logins` functions directly (they already operate on single-item lists). Only `failed_logins` needed a custom rolling buffer since the batch detector is pandas-based.
+
+**Deviations from UPGRADE.md (if any):**
+`tail_file` signature extended with `log_type` (second positional arg) and optional `stop_event` (fifth arg) beyond the spec's listed signature. Both are required: `log_type` so the callback receives it as specified; `stop_event` so `LogWatcher.stop()` can signal threads cleanly.
+
+**Commit hash:**
+
+---
