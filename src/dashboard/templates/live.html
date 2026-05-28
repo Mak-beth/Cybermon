@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %} — Live Monitor{% endblock %}
+
+{% block content %}
+<div class="live-header">
+  <h1>Live Monitor</h1>
+  <span id="status-dot" class="dot dot-connecting"></span>
+  <span id="status-text" class="live-status">Connecting...</span>
+</div>
+<p class="last-updated">Last updated: <span id="last-updated">—</span></p>
+
+<table class="vtable">
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>Type</th>
+      <th>Username</th>
+      <th>Source IP</th>
+      <th>Resource</th>
+      <th>Score</th>
+      <th>Severity</th>
+    </tr>
+  </thead>
+  <tbody id="live-body">
+    {% for v in violations %}
+    <tr>
+      <td class="mono">{{ v.timestamp[:19] }}</td>
+      <td class="mono small">{{ v.violation_type }}</td>
+      <td>{{ v.username or "—" }}</td>
+      <td class="mono">{{ v.source_ip or "—" }}</td>
+      <td class="mono">{{ v.resource or "—" }}</td>
+      <td class="score-cell">{{ v.risk_score }}</td>
+      <td><span class="badge {{ v.severity.lower() }}">{{ v.severity }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if not violations %}
+<p class="empty" id="empty-msg">No violations yet — waiting for live events.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const dot        = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const tbody      = document.getElementById('live-body');
+  const lastUpd    = document.getElementById('last-updated');
+  const emptyMsg   = document.getElementById('empty-msg');
+
+  function badgeHtml(sev) {
+    return `<span class="badge ${sev.toLowerCase()}">${sev}</span>`;
+  }
+
+  function prependRow(v) {
+    if (emptyMsg) emptyMsg.style.display = 'none';
+    const ts  = v.timestamp ? String(v.timestamp).slice(0, 19) : '—';
+    const row = document.createElement('tr');
+    row.className = 'live-new';
+    row.innerHTML =
+      `<td class="mono">${ts}</td>` +
+      `<td class="mono small">${v.violation_type}</td>` +
+      `<td>${v.username || '—'}</td>` +
+      `<td class="mono">${v.source_ip || '—'}</td>` +
+      `<td class="mono">${v.resource || '—'}</td>` +
+      `<td class="score-cell">${v.risk_score}</td>` +
+      `<td>${badgeHtml(v.severity)}</td>`;
+    tbody.prepend(row);
+    lastUpd.textContent = new Date().toLocaleTimeString();
+  }
+
+  const es = new EventSource('/stream');
+
+  es.onopen = function () {
+    dot.className = 'dot dot-connected';
+    statusText.textContent = 'Connected';
+  };
+
+  es.onmessage = function (e) {
+    prependRow(JSON.parse(e.data));
+  };
+
+  es.onerror = function () {
+    dot.className = 'dot dot-reconnecting';
+    statusText.textContent = 'Reconnecting...';
+  };
+</script>
+{% endblock %}

@@ -309,3 +309,35 @@ Nothing significant. Per-line processing reuses the existing `detect_unauthorize
 **Commit hash:**
 
 ---
+
+### Phase U2 — SSE Route and Live Monitor Page
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `GET /stream` returns `Content-Type: text/event-stream`
+- [x] New violation pushed to `_violation_queue` appears in SSE stream as `data: {...}\n\n`
+- [x] Keepalive comment (`": keepalive\n\n"`) sent after 30s of inactivity
+- [x] `GET /live` returns HTTP 200; existing violations shown on page load
+- [x] Severity badges on live page use same colours as violations.html
+- [x] All 8 tests in `tests/test_live.py` pass
+- [x] All 108 existing tests still pass (116 total)
+
+**What was built:**
+`src/dashboard/app.py` — added `_violation_queue` (module-level queue), `_SSE_STOP` sentinel, `post_violation(v)`, `_sse_generator(q)` (private generator; yields SSE data lines, stops on sentinel or keepalive-comments on timeout), `/stream` route (streaming Response, Cache-Control: no-cache), `/live` route (renders live.html with existing violations from DB).
+`src/dashboard/templates/live.html` — extends base.html; shows existing violations on load; `EventSource` connects to `/stream`; each message prepends a new row with amber-fade highlight animation; status dot pulses green when connected, turns red on disconnect; "Reconnecting..." shown on `onerror`.
+`src/dashboard/templates/base.html` — "Live" nav link added (green, matching Export CSV style).
+`src/dashboard/static/css/style.css` — added `.live-link`, `.dot` variants with `dot-pulse` keyframe animation, `.live-new` with `row-highlight` keyframe fade.
+`tests/test_live.py` — 8 tests: /live returns 200, existing violations in page body, /stream returns 200, /stream content-type, /stream delivers SSE data for queued violation, `post_violation` enqueues item, `_sse_generator` yields correct SSE format, datetime fields serialized to string.
+`UPGRADE.md` — added to repo root (read-only reference).
+
+**What didn't work and how it was fixed:**
+Initial stream tests each took 30 seconds. Root cause: Flask/Werkzeug test client drains the response generator when the `with client:` block exits, hitting the 30s `queue.Empty` timeout. Fixed by adding `_SSE_STOP = object()` sentinel — tests put it in the queue after their test violation, making the generator finite. Production behavior is unchanged (real clients never put `_SSE_STOP` in the queue).
+
+**Deviations from UPGRADE.md (if any):**
+None.
+
+**Commit hash:**
+
+---

@@ -6,10 +6,12 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import csv
+import json
+import queue
 from datetime import date
 
 import yaml
-from flask import Flask, render_template, send_file, abort
+from flask import Flask, render_template, send_file, abort, Response, stream_with_context
 
 from src.storage.db import init_db
 from src.storage.reader import (
@@ -26,6 +28,29 @@ DB_PATH = os.path.join(BASE_DIR, _config["storage"]["db_path"])
 EXPORT_DIR = os.path.join(BASE_DIR, _config["dashboard"]["export_path"])
 
 init_db(DB_PATH)
+
+_violation_queue: queue.Queue = queue.Queue()
+
+# Sentinel: put on the queue to stop the generator (used by tests only).
+_SSE_STOP = object()
+
+
+def post_violation(v: dict) -> None:
+    _violation_queue.put(v)
+
+
+def _sse_generator(q: queue.Queue):
+    try:
+        while True:
+            try:
+                v = q.get(timeout=30)
+                if v is _SSE_STOP:
+                    return
+                yield f"data: {json.dumps(v, default=str)}\n\n"
+            except queue.Empty:
+                yield ": keepalive\n\n"
+    except GeneratorExit:
+        pass
 
 
 @app.route("/")
@@ -77,6 +102,22 @@ def export():
         writer.writerows(rows)
 
     return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+@app.route("/stream")
+def stream():
+    resp = Response(
+        stream_with_context(_sse_generator(_violation_queue)),
+        mimetype="text/event-stream",
+    )
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/live")
+def live():
+    violations = get_all_violations_with_scores(DB_PATH)
+    return render_template("live.html", violations=violations)
 
 
 if __name__ == "__main__":
