@@ -111,3 +111,33 @@ Nothing significant. Auth timestamp year is derived from `datetime.now().year` s
 **Commit hash:**
 
 ---
+
+### Phase 2 — Violation Detection Engine
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `run_detection` returns at least 3 violations from the synthetic logs (returned 12)
+- [x] At least one violation of type `failed_logins` detected from `auth.log`
+- [x] At least one violation of type `unauthorized_access` detected from `access.log`
+- [x] At least one violation of type `off_hours_login` detected from `auth.log`
+- [x] Every violation dict contains all six schema keys
+- [x] Changing `threshold` changes the number of `failed_logins` violations detected
+- [x] All 17 tests in `tests/test_detection.py` pass
+
+**What was built:**
+`src/detection/rules/failed_logins.py` — groups FAILED events by username with pandas, slides a pd.Timedelta window, flags username when count exceeds threshold; one violation per username.
+`src/detection/rules/unauthorized_access.py` — matches status_code against trigger_codes (as strings) and resource against restricted_resources; one violation per matching event.
+`src/detection/rules/off_hours.py` — flags SUCCESS events whose timestamp falls outside business_days/business_hours from config; one violation per event.
+`src/detection/detector.py` — calls all three rules and returns combined list without mutating input.
+
+**What didn't work and how it was fixed:**
+Nothing significant.
+
+**Deviations from PHASES.md (if any):**
+None.
+
+**Commit hash:**
+
+---
