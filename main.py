@@ -90,13 +90,13 @@ def main():
         watcher = LogWatcher(config)
         watcher.start(args.auth_log, args.web_log, post_violation)
 
-        print(f"\nLive monitoring active — watching {args.auth_log} and {args.web_log}")
-        print(f"Dashboard → http://{host}:{port}")
+        print(f"\nLive monitoring active - watching {args.auth_log} and {args.web_log}")
+        print(f"Dashboard -> http://{host}:{port}")
         print("Press Ctrl+C to stop.\n")
     else:
         from src.dashboard.app import app
 
-        print(f"\nLaunching dashboard → http://{host}:{port}")
+        print(f"\nLaunching dashboard -> http://{host}:{port}")
         print("Press Ctrl+C to stop.\n")
 
     app.run(host=host, port=port, debug=config["dashboard"]["debug"])
