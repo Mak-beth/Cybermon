@@ -341,3 +341,35 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase U3 — Hourly Trend Chart
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `get_trend_by_hour_today` returns all 24 hours always, even with no violations that hour
+- [x] Three separate lines on chart — one per violation type (red / amber / green)
+- [x] X-axis shows hours 00–23
+- [x] Y-axis is integer-only, starts at zero
+- [x] Old `get_trend_data` still exists and existing tests still pass
+- [x] `get_trend_data` default window changed to 365 days
+- [x] All 5 new tests in `tests/test_storage.py` pass
+- [x] All 116 existing tests still pass (121 total)
+
+**What was built:**
+`src/storage/reader.py` — added `get_trend_by_hour_today(db_path)`: queries violations WHERE DATE(timestamp) = DATE('now'), groups by strftime('%H', ...) and violation_type, fills all 24 hour buckets with 0 before applying query results; returns `{"hours": ["00".."23"], "failed_logins": [...], "unauthorized_access": [...], "off_hours_login": [...]}`. Changed `get_trend_data` default from `days=7` to `days=365`.
+`src/dashboard/app.py` — `/trend` route now calls `get_trend_by_hour_today` and passes `trend_data` dict to template; `get_trend_by_hour_today` added to imports.
+`src/dashboard/templates/trend.html` — replaced 7-day bar chart with 3-line hourly chart; heading "Today's violations by hour"; empty state when all counts are zero; passes 4 arrays to `initHourlyTrendChart`.
+`src/dashboard/static/js/charts.js` — added `initHourlyTrendChart(hours, failed, unauthorized, offhours)`: Chart.js line chart, 3 datasets (failed logins #dc3545, unauthorized #ffc107, off-hours #3fb950), tension 0.3, fill false, point radius 4 only where count > 0, Y-axis integer-only from zero. `initSeverityChart` and `initTrendChart` kept.
+`tests/test_storage.py` — 5 new tests: correct keys returned, 24 hours in list, 24 entries per count list, all counts non-negative integers, today's violation appears at correct hour index.
+
+**What didn't work and how it was fixed:**
+Nothing significant.
+
+**Deviations from UPGRADE.md (if any):**
+None.
+
+**Commit hash:**
+
+---

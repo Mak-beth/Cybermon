@@ -2,24 +2,36 @@
 {% block title %} — Trend{% endblock %}
 
 {% block content %}
-<h1>Violation Trend <span class="dim" style="font-size:1rem;font-weight:400">last 7 days</span></h1>
+<h1>Today's violations by hour</h1>
 
-{% if labels %}
+{% set any_data = (trend_data.failed_logins | sum)
+                + (trend_data.unauthorized_access | sum)
+                + (trend_data.off_hours_login | sum) %}
+
+{% if any_data > 0 %}
 <div class="card">
   <div class="chart-wrap tall">
     <canvas id="trendChart"></canvas>
   </div>
 </div>
 {% else %}
-<p class="empty">No violations in the last 7 days.</p>
+<p class="empty">No violations recorded today.</p>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
-{% if labels %}
+{% set any_data = (trend_data.failed_logins | sum)
+                + (trend_data.unauthorized_access | sum)
+                + (trend_data.off_hours_login | sum) %}
+{% if any_data > 0 %}
 <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
 <script>
-  initTrendChart({{ labels | tojson }}, {{ counts | tojson }});
+  initHourlyTrendChart(
+    {{ trend_data.hours          | tojson }},
+    {{ trend_data.failed_logins  | tojson }},
+    {{ trend_data.unauthorized_access | tojson }},
+    {{ trend_data.off_hours_login     | tojson }}
+  );
 </script>
 {% endif %}
 {% endblock %}

@@ -19,6 +19,7 @@ from src.storage.reader import (
     get_summary_counts,
     get_violation_detail,
     get_trend_data,
+    get_trend_by_hour_today,
 )
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -80,10 +81,8 @@ def not_found(e):
 
 @app.route("/trend")
 def trend():
-    data = get_trend_data(DB_PATH, days=7)
-    labels = [entry["date"] for entry in data]
-    counts = [entry["count"] for entry in data]
-    return render_template("trend.html", labels=labels, counts=counts)
+    trend_data = get_trend_by_hour_today(DB_PATH)
+    return render_template("trend.html", trend_data=trend_data)
 
 
 @app.route("/export")

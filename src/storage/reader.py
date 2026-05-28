@@ -56,7 +56,34 @@ def get_violation_detail(violation_id: int, db_path: str) -> dict:
     return dict(row) if row else {}
 
 
-def get_trend_data(db_path: str, days: int = 7) -> list[dict]:
+def get_trend_by_hour_today(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT strftime('%H', timestamp) AS hour,
+               violation_type,
+               COUNT(*) AS count
+        FROM violations
+        WHERE DATE(timestamp) = DATE('now')
+        GROUP BY hour, violation_type
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    result = {
+        "hours": [f"{h:02d}" for h in range(24)],
+        "failed_logins":       [0] * 24,
+        "unauthorized_access": [0] * 24,
+        "off_hours_login":     [0] * 24,
+    }
+    for hour_str, vtype, count in rows:
+        idx = int(hour_str)
+        if vtype in result:
+            result[vtype][idx] = count
+    return result
+
+
+def get_trend_data(db_path: str, days: int = 365) -> list[dict]:
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     cur.execute("""

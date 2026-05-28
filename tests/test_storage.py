@@ -9,6 +9,7 @@ from src.storage.reader import (
     get_summary_counts,
     get_violation_detail,
     get_trend_data,
+    get_trend_by_hour_today,
 )
 
 TEST_DB = "data/test_phase4.db"
@@ -224,6 +225,58 @@ def test_get_trend_data_count_positive(populated_db):
     trend = get_trend_data(db_path, days=30)
     assert len(trend) >= 1
     assert all(entry["count"] > 0 for entry in trend)
+
+
+# --- get_trend_by_hour_today ---
+
+def test_get_trend_by_hour_today_returns_correct_keys(db_path):
+    init_db(db_path)
+    result = get_trend_by_hour_today(db_path)
+    assert set(result.keys()) == {"hours", "failed_logins", "unauthorized_access", "off_hours_login"}
+
+
+def test_get_trend_by_hour_today_has_24_hours(db_path):
+    init_db(db_path)
+    result = get_trend_by_hour_today(db_path)
+    assert len(result["hours"]) == 24
+    assert result["hours"] == [f"{h:02d}" for h in range(24)]
+
+
+def test_get_trend_by_hour_today_count_lists_have_24_entries(db_path):
+    init_db(db_path)
+    result = get_trend_by_hour_today(db_path)
+    for key in ("failed_logins", "unauthorized_access", "off_hours_login"):
+        assert len(result[key]) == 24
+
+
+def test_get_trend_by_hour_today_counts_are_non_negative_integers(db_path):
+    init_db(db_path)
+    result = get_trend_by_hour_today(db_path)
+    for key in ("failed_logins", "unauthorized_access", "off_hours_login"):
+        for count in result[key]:
+            assert isinstance(count, int)
+            assert count >= 0
+
+
+def test_get_trend_by_hour_today_captures_todays_violations(db_path):
+    import sqlite3
+    from datetime import datetime
+
+    init_db(db_path)
+    now = datetime.now()
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO violations "
+        "(violation_type, timestamp, username, source_ip, resource, detail) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("unauthorized_access", now.isoformat(), None, "10.0.0.1", "/admin", "test"),
+    )
+    conn.commit()
+    conn.close()
+
+    result = get_trend_by_hour_today(db_path)
+    hour_idx = int(now.strftime("%H"))
+    assert result["unauthorized_access"][hour_idx] == 1
 
 
 # --- no data persists after fixture cleanup ---
