@@ -5,8 +5,8 @@ simulating live activity for use with `python main.py --live`.
 import time
 from datetime import datetime
 
-AUTH_LOG = "logs/samples/auth.log"
-WEB_LOG  = "logs/samples/access.log"
+AUTH_LOG = "logs/live/auth.log"
+WEB_LOG  = "logs/live/access.log"
 
 
 def _auth_ts(now: datetime) -> str:
