@@ -107,7 +107,11 @@ def main():
         print(f"\nLaunching dashboard -> http://{host}:{port}")
         print("Press Ctrl+C to stop.\n")
 
-    app.run(host=host, port=port, debug=config["dashboard"]["debug"])
+    # use_reloader=False is required in live mode: the reloader forks a child
+    # process which gets its own _violation_queue, severing the watcher->SSE link.
+    use_reloader = not args.live
+    app.run(host=host, port=port, debug=config["dashboard"]["debug"],
+            use_reloader=use_reloader)
 
 
 if __name__ == "__main__":
