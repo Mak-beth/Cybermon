@@ -86,9 +86,17 @@ def main():
     if args.live:
         from src.ingestion.watcher import LogWatcher
         from src.dashboard.app import app, post_violation
+        from src.storage.writer import insert_violation, insert_risk_score
 
         watcher = LogWatcher(config)
-        watcher.start(args.auth_log, args.web_log, post_violation)
+
+        def live_callback(v: dict) -> None:
+            db_path = config["storage"]["db_path"]
+            vid = insert_violation(v, db_path)
+            insert_risk_score(vid, v, db_path)
+            post_violation(v)
+
+        watcher.start(args.auth_log, args.web_log, live_callback)
 
         print(f"\nLive monitoring active - watching {args.auth_log} and {args.web_log}")
         print(f"Dashboard -> http://{host}:{port}")
