@@ -110,6 +110,7 @@ def stream():
         mimetype="text/event-stream",
     )
     resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
     return resp
 
 
