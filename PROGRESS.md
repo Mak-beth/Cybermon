@@ -252,3 +252,31 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase 6 — Full Pipeline & Integration Tests
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `python main.py` runs the full pipeline end-to-end and launches the Flask dashboard
+- [x] `--auth-log` and `--web-log` CLI flags accepted; defaults point to synthetic logs
+- [x] Pipeline prints progress lines (1/5 … 5/5) and summary
+- [x] Running `main.py` twice produces the same violation count (idempotent)
+- [x] All 13 tests in `tests/test_integration.py` pass
+- [x] Full test suite (100 tests across all 5 test files) passes with 0 failures
+
+**What was built:**
+`main.py` (full rewrite) — `run_pipeline(auth_log, web_log, config)` wires all five phases into one call: init DB, clear tables, ingest, store events, detect, score, store violations + scores, print summary. `main()` adds argparse (`--auth-log`, `--web-log`) then launches Flask after the pipeline completes.
+`_clear_tables` resets `sqlite_sequence` rows alongside DELETE so AUTOINCREMENT IDs restart at 1 on every run.
+`tests/test_integration.py` — 13 integration tests: event count (47), violation count (12), all three violation types present, DB count matches detection output, all scored have valid severity, risk_score == likelihood × impact, idempotency, dashboard routes / /violations /violations/1 → 200, /violations/99999 → 404, CSV headers correct, CSV row count matches DB.
+
+**What didn't work and how it was fixed:**
+`test_dashboard_detail_returns_200` failed because `INTEGER PRIMARY KEY AUTOINCREMENT` kept incrementing IDs across DELETE-and-reinsert cycles, so `/violations/1` returned 404 after the first test run. Fixed by adding `DELETE FROM sqlite_sequence WHERE name IN ('risk_scores', 'violations', 'events')` to `_clear_tables`, which resets the counters so IDs restart at 1 on every pipeline run.
+
+**Deviations from PHASES.md (if any):**
+None.
+
+**Commit hash:**
+
+---
