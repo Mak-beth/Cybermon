@@ -181,3 +181,38 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase 4 — Storage Layer
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `init_db` creates all three tables without error
+- [x] Calling `init_db` twice does not raise an error or duplicate tables
+- [x] `insert_events` batch inserts all events without error
+- [x] `insert_violation` returns the correct integer row id
+- [x] `get_all_violations_with_scores` returns results ordered by `risk_score` descending
+- [x] `get_summary_counts` returns correct totals matching what was inserted
+- [x] `get_trend_data` returns a list of dicts each with `date` and `count` keys
+- [x] `get_violation_detail` returns a single dict for a valid id
+- [x] All 21 tests in `tests/test_storage.py` pass
+- [x] Test uses `data/test_phase4.db` and deletes it after — confirmed by final test
+
+**What was built:**
+`src/storage/db.py` — `init_db` creates data dir and all three tables with `CREATE TABLE IF NOT EXISTS`; idempotent by design.
+`src/storage/writer.py` — `insert_events` batch inserts via `executemany`; derives `log_type` from `action` field; `insert_violation` returns `lastrowid`; `insert_risk_score` links to violation by id.
+`src/storage/reader.py` — `get_all_violations_with_scores` JOINs violations + risk_scores ordered DESC; `get_summary_counts` returns pre-initialized dicts for all types/severities; `get_violation_detail` returns empty dict on missing id; `get_trend_data` uses SQLite DATE() grouping.
+
+**Summary from synthetic logs:**
+12 violations stored: 1 failed_logins, 10 unauthorized_access, 1 off_hours_login. By severity: 5 Medium, 7 High.
+
+**What didn't work and how it was fixed:**
+Nothing significant.
+
+**Deviations from PHASES.md (if any):**
+None.
+
+**Commit hash:**
+
+---

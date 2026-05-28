@@ -1,0 +1,71 @@
+import sqlite3
+
+
+def get_all_violations_with_scores(db_path: str) -> list[dict]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT v.id, v.violation_type, v.timestamp, v.username, v.source_ip,
+               v.resource, v.detail,
+               r.likelihood, r.impact, r.risk_score, r.severity
+        FROM violations v
+        JOIN risk_scores r ON r.violation_id = v.id
+        ORDER BY r.risk_score DESC
+    """)
+    rows = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_summary_counts(db_path: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM violations")
+    total = cur.fetchone()[0]
+
+    by_type = {"failed_logins": 0, "unauthorized_access": 0, "off_hours_login": 0}
+    cur.execute("SELECT violation_type, COUNT(*) FROM violations GROUP BY violation_type")
+    for vtype, count in cur.fetchall():
+        by_type[vtype] = count
+
+    by_severity = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
+    cur.execute("SELECT severity, COUNT(*) FROM risk_scores GROUP BY severity")
+    for severity, count in cur.fetchall():
+        by_severity[severity] = count
+
+    conn.close()
+    return {"total": total, "by_type": by_type, "by_severity": by_severity}
+
+
+def get_violation_detail(violation_id: int, db_path: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT v.id, v.violation_type, v.timestamp, v.username, v.source_ip,
+               v.resource, v.detail,
+               r.likelihood, r.impact, r.risk_score, r.severity
+        FROM violations v
+        JOIN risk_scores r ON r.violation_id = v.id
+        WHERE v.id = ?
+    """, (violation_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def get_trend_data(db_path: str, days: int = 7) -> list[dict]:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DATE(timestamp) as date, COUNT(*) as count
+        FROM violations
+        WHERE timestamp >= DATE('now', ?)
+        GROUP BY DATE(timestamp)
+        ORDER BY date
+    """, (f"-{days} days",))
+    rows = [{"date": row[0], "count": row[1]} for row in cur.fetchall()]
+    conn.close()
+    return rows
