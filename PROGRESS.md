@@ -141,3 +141,43 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase 2 Fix — Two-Pointer Sliding Window
+**Date:** 2026-05-28
+**File:** `src/detection/rules/failed_logins.py`
+**Change:** Replaced nested loop with two-pointer approach as required by updated PHASES.md. Left pointer advances whenever the window exceeds the configured duration; violation emitted when window size exceeds threshold. All 17 detection tests confirmed passing after fix.
+
+---
+
+### Phase 3 — Risk Scoring
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] Every scored violation contains `likelihood`, `impact`, `risk_score`, and `severity`
+- [x] `risk_score` equals `likelihood * impact` for every violation
+- [x] Score 4 → Low, 5 → Medium, 10 → High, 17 → Critical
+- [x] Tier boundary tests pass: 4→Low, 5→Medium, 9→Medium, 10→High, 16→High, 17→Critical, 25→Critical
+- [x] `assign_severity` reads tier ranges from config — no hardcoded numbers in scorer.py
+- [x] All 31 tests in `tests/test_scoring.py` pass
+
+**What was built:**
+`src/scoring/rules.py` — `get_likelihood` extracts failure count from detail string via regex; `get_impact` maps username/resource to impact value. All lookup logic isolated here.
+`src/scoring/scorer.py` — five functions; `assign_severity` reads config tiers with no hardcoded numbers; `score_violation` uses dict unpacking to avoid mutating input.
+
+**Scores from synthetic logs:**
+- failed_logins (admin, 8 in 10 min): L=3 × I=4 = 12 → High
+- unauthorized_access (/admin, /.env): L=3 × I=5 = 15 → High
+- unauthorized_access (/config, /wp-admin): L=3 × I=3 = 9 → Medium
+- off_hours_login (alice 02:14): L=2 × I=3 = 6 → Medium
+
+**What didn't work and how it was fixed:**
+Nothing significant.
+
+**Deviations from PHASES.md (if any):**
+None.
+
+**Commit hash:**
+
+---

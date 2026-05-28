@@ -15,20 +15,23 @@ def detect_failed_logins(events: list[dict], config: dict) -> list[dict]:
     df = df.sort_values("timestamp")
 
     violations = []
+    window = pd.Timedelta(minutes=window_minutes)
 
     for username, group in df.groupby("username"):
         group = group.sort_values("timestamp").reset_index(drop=True)
         timestamps = group["timestamp"].tolist()
-        window = pd.Timedelta(minutes=window_minutes)
 
-        for i, t_start in enumerate(timestamps):
-            count = sum(1 for t in timestamps[i:] if t - t_start <= window)
+        left = 0
+        for right in range(len(timestamps)):
+            while timestamps[right] - timestamps[left] > window:
+                left += 1
+            count = right - left + 1
             if count > threshold:
                 violations.append({
                     "violation_type": "failed_logins",
-                    "timestamp": group.iloc[i]["timestamp"].to_pydatetime(),
+                    "timestamp": timestamps[left].to_pydatetime(),
                     "username": username,
-                    "source_ip": group.iloc[i].get("source_ip"),
+                    "source_ip": group.iloc[left].get("source_ip"),
                     "resource": None,
                     "detail": f"{count} failed logins in {window_minutes} min for user '{username}'",
                 })
