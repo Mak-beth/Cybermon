@@ -71,6 +71,8 @@ def main():
                         help="Path to Linux auth log file")
     parser.add_argument("--web-log", default="logs/samples/access.log",
                         help="Path to Apache access log file")
+    parser.add_argument("--live", action="store_true",
+                        help="Start live monitoring mode — watches log files continuously")
     args = parser.parse_args()
 
     # 1. Load config
@@ -78,13 +80,25 @@ def main():
 
     run_pipeline(args.auth_log, args.web_log, config)
 
-    # 9. Launch dashboard
     host = config["dashboard"]["host"]
     port = config["dashboard"]["port"]
-    print(f"\nLaunching dashboard → http://{host}:{port}")
-    print("Press Ctrl+C to stop.\n")
 
-    from src.dashboard.app import app
+    if args.live:
+        from src.ingestion.watcher import LogWatcher
+        from src.dashboard.app import app, post_violation
+
+        watcher = LogWatcher(config)
+        watcher.start(args.auth_log, args.web_log, post_violation)
+
+        print(f"\nLive monitoring active — watching {args.auth_log} and {args.web_log}")
+        print(f"Dashboard → http://{host}:{port}")
+        print("Press Ctrl+C to stop.\n")
+    else:
+        from src.dashboard.app import app
+
+        print(f"\nLaunching dashboard → http://{host}:{port}")
+        print("Press Ctrl+C to stop.\n")
+
     app.run(host=host, port=port, debug=config["dashboard"]["debug"])
 
 

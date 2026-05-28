@@ -338,7 +338,7 @@ Initial stream tests each took 30 seconds. Root cause: Flask/Werkzeug test clien
 **Deviations from UPGRADE.md (if any):**
 None.
 
-**Commit hash:**
+**Commit hash:** (see U3 commit)
 
 ---
 
@@ -366,6 +366,33 @@ None.
 
 **What didn't work and how it was fixed:**
 Nothing significant.
+
+**Deviations from UPGRADE.md (if any):**
+None.
+
+**Commit hash:** (see U3 commit)
+
+---
+
+### Phase U4 — Single Launch Command
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `main.py --live` starts the batch pipeline then launches `LogWatcher` before Flask
+- [x] `main.py` (no flag) still works as before — batch pipeline only, no watcher
+- [x] `start.bat` creates venv if absent, installs dependencies, and starts live mode in one double-click
+- [x] `RUNNING.md` updated with Quickstart section and batch vs live comparison table
+- [x] All 121 existing tests still pass — 0 failures
+
+**What was built:**
+`main.py` — added `--live` argparse flag. When set: imports and starts `LogWatcher` with `post_violation` as the callback before launching Flask; prints live monitoring notice with file paths being watched. Without the flag: existing batch behaviour unchanged.
+`start.bat` — Windows batch file in project root. Checks for `venv\Scripts\activate.bat`; creates venv if missing; activates, pip installs quietly, then runs `main.py --live`. Works by double-click or from any terminal via `start.bat`.
+`RUNNING.md` — new **Quickstart** section at the top describing `start.bat`; new **Batch mode vs live mode** comparison table; dashboard URL table updated to include `/live`; Phase completion table updated with U1–U4 rows.
+
+**What didn't work and how it was fixed:**
+Nothing significant. All wiring already existed from U1–U3; U4 is purely the CLI flag and startup script.
 
 **Deviations from UPGRADE.md (if any):**
 None.

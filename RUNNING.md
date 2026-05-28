@@ -1,7 +1,34 @@
 # Running Cybermon
 
 Step-by-step instructions for getting the project running locally.
-Updated after each phase. Current state: **Phase 6 complete**.
+Updated after each phase. Current state: **Upgrades U1–U4 complete**.
+
+---
+
+## Quickstart (Windows — live mode)
+
+Double-click `start.bat` or run it from a terminal:
+
+```bat
+start.bat
+```
+
+This single script:
+1. Creates a virtual environment if one does not exist
+2. Installs all dependencies from `requirements.txt`
+3. Runs the batch pipeline against the sample logs
+4. Starts live monitoring (watches log files for new activity)
+5. Launches the Flask dashboard at `http://127.0.0.1:5000`
+
+---
+
+## Batch mode vs live mode
+
+| Mode | Command | What it does |
+|------|---------|--------------|
+| Batch (default) | `venv\Scripts\python.exe main.py` | Processes sample logs once, then serves the dashboard |
+| Live | `venv\Scripts\python.exe main.py --live` | Batch pipeline first, then watches log files for new lines in real time; new violations appear instantly on `/live` |
+| Custom logs | `... main.py --auth-log path/to/auth.log --web-log path/to/access.log` | Points both modes at your own log files |
 
 ---
 
@@ -119,7 +146,7 @@ Press `Ctrl+C` to stop the server.
 
 ---
 
-## 7. Dashboard pages (Phase 6)
+## 7. Dashboard pages
 
 Then open your browser at:
 
@@ -128,7 +155,8 @@ Then open your browser at:
 | `http://127.0.0.1:5000/` | Overview — total count, severity chart |
 | `http://127.0.0.1:5000/violations` | Ranked violation list |
 | `http://127.0.0.1:5000/violations/1` | Single violation detail |
-| `http://127.0.0.1:5000/trend` | Violations over time |
+| `http://127.0.0.1:5000/trend` | Today's violations by hour (line chart, 3 types) |
+| `http://127.0.0.1:5000/live` | Live monitor — real-time stream of new violations |
 | `http://127.0.0.1:5000/export` | Download CSV report |
 
 ---
@@ -157,3 +185,7 @@ All thresholds and settings live in `config/config.yaml`. No values are hardcode
 | 4 | SQLite storage | `venv\Scripts\pytest.exe tests/test_storage.py -v` |
 | 5 | Flask dashboard | `venv\Scripts\python.exe src/dashboard/app.py` |
 | 6 | Full pipeline + integration tests | `venv\Scripts\python.exe main.py` / `venv\Scripts\pytest.exe tests/ -v` |
+| U1 | Log file watcher (real-time tailing) | `venv\Scripts\pytest.exe tests/test_watcher.py -v` |
+| U2 | SSE route + live monitor page | `venv\Scripts\pytest.exe tests/test_live.py -v` |
+| U3 | Hourly trend chart | `venv\Scripts\pytest.exe tests/test_storage.py -v` |
+| U4 | `--live` flag + `start.bat` | `start.bat` or `main.py --live` |
