@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cybermon{% block title %}{% endblock %}</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="nav-brand">&#9670; CYBERMON</span>
+    <ul>
+      <li><a href="/">Overview</a></li>
+      <li><a href="/violations">Violations</a></li>
+      <li><a href="/trend">Trend</a></li>
+      <li><a href="/export" class="export-link">Export CSV</a></li>
+    </ul>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

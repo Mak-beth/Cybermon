@@ -216,3 +216,39 @@ None.
 **Commit hash:**
 
 ---
+
+### Phase 5 — Flask Dashboard
+**Status:** Complete
+**Date Started:** 2026-05-28
+**Date Completed:** 2026-05-28
+
+**Acceptance Criteria Results:**
+- [x] `/` loads without error and shows summary counts and doughnut chart
+- [x] `/violations` table sorted by risk_score descending, severity badges correct colours
+- [x] `/violations/<id>` shows plain-language score sentence on one line
+- [x] `/violations/99999` returns 404 for unknown id
+- [x] `/trend` renders bar chart with data points
+- [x] `/export` downloads CSV with correct headers and all 12 rows
+- [x] Dashboard runs on 127.0.0.1:5000 with no extra setup
+- [x] No SQL in app.py — all data through reader.py
+- [x] No hardcoded values in templates
+
+**What was built:**
+`src/dashboard/app.py` — 5 routes + 404 handler; reads db_path and host/port from config; calls init_db on startup so db is created if missing; sys.path patched so it runs from any working directory.
+`templates/base.html` — sticky nav, Chart.js CDN, CSS link.
+`templates/index.html` — stat cards for total + per-severity, doughnut chart, by-type and by-severity tables.
+`templates/violations.html` — clickable table rows linking to detail view, colour-coded severity badges.
+`templates/detail.html` — all violation fields, score breakdown sentence, visual L × I = score display.
+`templates/trend.html` — bar chart; empty state message if no data.
+`static/css/style.css` — dark GitHub-style theme, severity badge colours match Table 3.3 exactly.
+`static/js/charts.js` — initSeverityChart (doughnut) and initTrendChart (bar).
+
+**What didn't work and how it was fixed:**
+Score sentence was split across two lines in the template — moved to a single line so it renders and matches cleanly.
+
+**Deviations from PHASES.md (if any):**
+None.
+
+**Commit hash:**
+
+---

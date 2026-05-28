@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %} — Violations{% endblock %}
+
+{% block content %}
+<h1>Violations <span class="pill">{{ violations | length }}</span></h1>
+
+{% if violations %}
+<table class="vtable">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Timestamp</th>
+      <th>Type</th>
+      <th>Username</th>
+      <th>Source IP</th>
+      <th>Resource</th>
+      <th>Score</th>
+      <th>Severity</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in violations %}
+    <tr class="clickable" onclick="location.href='/violations/{{ v.id }}'">
+      <td class="dim">{{ v.id }}</td>
+      <td class="mono">{{ v.timestamp[:19] }}</td>
+      <td class="mono small">{{ v.violation_type }}</td>
+      <td>{{ v.username or "—" }}</td>
+      <td class="mono">{{ v.source_ip or "—" }}</td>
+      <td class="mono">{{ v.resource or "—" }}</td>
+      <td class="score-cell">{{ v.risk_score }}</td>
+      <td><span class="badge {{ v.severity.lower() }}">{{ v.severity }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No violations in database. Run the pipeline first.</p>
+{% endif %}
+{% endblock %}

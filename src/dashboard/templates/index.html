@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %} — Overview{% endblock %}
+
+{% block content %}
+<h1>Security Overview</h1>
+
+<div class="summary-grid">
+  <div class="stat-card accent">
+    <div class="stat-number">{{ summary.total }}</div>
+    <div class="stat-label">Total Violations</div>
+  </div>
+  {% for severity, count in summary.by_severity.items() %}
+  <div class="stat-card">
+    <div class="stat-number sev-{{ severity.lower() }}">{{ count }}</div>
+    <div class="stat-label">{{ severity }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>Severity Distribution</h2>
+    <div class="chart-wrap">
+      <canvas id="severityChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>By Violation Type</h2>
+    <table class="counts-table">
+      {% for vtype, count in summary.by_type.items() %}
+      <tr>
+        <td>{{ vtype.replace("_", " ").title() }}</td>
+        <td class="count-val">{{ count }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <h2 style="margin-top:1.5rem">By Severity</h2>
+    <table class="counts-table">
+      {% for severity, count in summary.by_severity.items() %}
+      <tr>
+        <td><span class="badge {{ severity.lower() }}">{{ severity }}</span></td>
+        <td class="count-val">{{ count }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+  initSeverityChart(
+    {{ summary.by_severity.Low }},
+    {{ summary.by_severity.Medium }},
+    {{ summary.by_severity.High }},
+    {{ summary.by_severity.Critical }}
+  );
+</script>
+{% endblock %}
