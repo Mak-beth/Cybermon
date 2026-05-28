@@ -1,0 +1,25 @@
+May 27 02:14:30 server sshd[1021]: Accepted password for alice from 172.16.0.10 port 22 ssh2
+May 27 07:45:11 server sshd[1030]: Failed password for root from 203.0.113.5 port 22 ssh2
+May 27 07:46:02 server sshd[1031]: Failed password for root from 203.0.113.5 port 22 ssh2
+May 27 08:05:22 server sshd[1010]: Failed password for testuser from 10.0.0.20 port 22 ssh2
+May 27 08:20:44 server sshd[1011]: Failed password for testuser from 10.0.0.20 port 22 ssh2
+May 27 08:35:10 server sshd[1012]: Failed password for testuser from 10.0.0.20 port 22 ssh2
+May 27 09:10:01 server sshd[1001]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:10:45 server sshd[1002]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:11:12 server sshd[1003]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:11:58 server sshd[1004]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:12:30 server sshd[1005]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:13:05 server sshd[1006]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:13:42 server sshd[1007]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 09:14:17 server sshd[1008]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 10:22:05 server sshd[1020]: Accepted password for john from 10.0.0.5 port 22 ssh2
+May 27 11:05:33 server sshd[1041]: Failed password for invalid user guest from 198.51.100.1 port 22 ssh2
+May 27 11:10:44 server sshd[1042]: Failed password for invalid user oracle from 198.51.100.2 port 22 ssh2
+May 27 13:30:00 server sshd[1050]: Accepted password for charlie from 10.0.0.25 port 22 ssh2
+May 27 14:15:22 server sshd[1051]: Failed password for admin from 192.168.1.200 port 22 ssh2
+May 27 15:00:00 server sshd[1060]: Accepted password for diana from 10.0.0.30 port 22 ssh2
+May 27 15:05:01 server sshd[1061]: Failed password for testuser from 10.0.0.20 port 22 ssh2
+May 27 16:20:00 server sshd[1070]: Accepted password for eve from 10.0.0.40 port 22 ssh2
+May 27 22:45:00 server sshd[1080]: Failed password for admin from 192.168.1.100 port 22 ssh2
+May 27 23:10:15 server sshd[1081]: Failed password for root from 203.0.113.10 port 22 ssh2
+May 27 23:45:30 server sshd[1082]: Failed password for invalid user ftpuser from 10.10.10.10 port 22 ssh2

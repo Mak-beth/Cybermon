@@ -1,0 +1,24 @@
+detection:
+  failed_logins:
+    threshold: 5
+    time_window_minutes: 10
+  unauthorized_access:
+    restricted_resources: ["/admin", "/wp-admin", "/phpmyadmin", "/config", "/.env"]
+    trigger_codes: [403, 401]
+  off_hours_logins:
+    business_days: [0, 1, 2, 3, 4]
+    business_hours_start: "08:00"
+    business_hours_end: "18:00"
+scoring:
+  severity_tiers:
+    low:      { min: 1,  max: 4  }
+    medium:   { min: 5,  max: 9  }
+    high:     { min: 10, max: 16 }
+    critical: { min: 17, max: 25 }
+storage:
+  db_path: "data/cybermon.db"
+dashboard:
+  host: "127.0.0.1"
+  port: 5000
+  debug: false
+  export_path: "exports/"
