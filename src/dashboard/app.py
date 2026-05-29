@@ -11,7 +11,7 @@ import queue
 from datetime import date
 
 import yaml
-from flask import Flask, render_template, send_file, abort, Response, stream_with_context
+from flask import Flask, jsonify, render_template, send_file, abort, Response, stream_with_context
 
 from src.storage.db import init_db
 from src.storage.reader import (
@@ -101,6 +101,12 @@ def export():
         writer.writerows(rows)
 
     return send_file(filepath, as_attachment=True, download_name=filename)
+
+
+@app.route("/api/summary")
+def api_summary():
+    summary = get_summary_counts(DB_PATH)
+    return jsonify(summary)
 
 
 @app.route("/stream")
