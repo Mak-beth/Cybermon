@@ -22,6 +22,7 @@
   <div class="score-section">
     <h2>Risk Score Breakdown</h2>
     <p class="score-sentence">Likelihood {{ violation.likelihood }} &times; Impact {{ violation.impact }} = Risk Score {{ violation.risk_score }} ({{ violation.severity }})</p>
+    <p class="recommended"><strong>Recommended action:</strong> {{ recommended }}</p>
     <div class="score-row">
       <div class="score-box">
         <div class="score-num">{{ violation.likelihood }}</div>

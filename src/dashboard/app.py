@@ -66,12 +66,21 @@ def violations():
     return render_template("violations.html", violations=rows)
 
 
+RECOMMENDED_RESPONSE = {
+    'Low':      'Log and monitor. No immediate action required.',
+    'Medium':   'Review and investigate at next available opportunity.',
+    'High':     'Investigate promptly. Consider temporary account lock.',
+    'Critical': 'Immediate investigation and escalation required.',
+}
+
+
 @app.route("/violations/<int:id>")
 def violation_detail(id):
     detail = get_violation_detail(id, DB_PATH)
     if not detail:
         abort(404)
-    return render_template("detail.html", violation=detail)
+    recommended = RECOMMENDED_RESPONSE.get(detail['severity'], '')
+    return render_template("detail.html", violation=detail, recommended=recommended)
 
 
 @app.errorhandler(404)
