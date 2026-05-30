@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Optional
 
 _AUTH_LINE = re.compile(
@@ -7,8 +8,10 @@ _AUTH_LINE = re.compile(
     r'(\S+\[\d+\]):\s+'
     r'(.+)$'
 )
-_FAILED_MSG  = re.compile(r'Failed password for (?:invalid user )?(\S+) from (\S+) port')
-_ACCEPTED_MSG = re.compile(r'Accepted password for (\S+) from (\S+) port')
+_FAILED_MSG       = re.compile(r'Failed password for (?:invalid user )?(\S+) from (\S+) port')
+_ACCEPTED_MSG     = re.compile(r'Accepted password for (\S+) from (\S+) port')
+# "Invalid user X from IP" — appears without "Failed password" prefix in some sshd versions
+_INVALID_USER_MSG = re.compile(r'Invalid user (\S+) from (\S+)')
 
 _ACCESS_LINE = re.compile(
     r'^(\S+)\s+\S+\s+\S+\s+'
@@ -17,6 +20,15 @@ _ACCESS_LINE = re.compile(
     r'(\d{3})\s+'
     r'\S+'
 )
+
+# Apache error log: [Day Mon DD HH:MM:SS YYYY] [level] [client IP] message
+_APACHE_ERROR_LINE = re.compile(
+    r'^\[(\w{3} \w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\]\s+'
+    r'\[(\w+)\]\s+'
+    r'(?:\[client\s+(\S+?)\]\s+)?'
+    r'(.+)$'
+)
+_APACHE_ERROR_PATH = re.compile(r'(/\S+?)/*$')
 
 
 def parse_auth_log_line(line: str) -> Optional[dict]:
@@ -48,21 +60,64 @@ def parse_auth_log_line(line: str) -> Optional[dict]:
             "status": "success",
             "raw": line,
         }
+    # "Invalid user X from IP" — same meaning as a failed login, no port suffix
+    inv_user = _INVALID_USER_MSG.search(message)
+    if inv_user:
+        return {
+            "timestamp": timestamp_str,
+            "hostname": hostname,
+            "process": process,
+            "username": inv_user.group(1),
+            "source_ip": inv_user.group(2),
+            "status": "failure",
+            "raw": line,
+        }
     return None
 
 
 def parse_access_log_line(line: str) -> Optional[dict]:
     if not line or not line.strip():
         return None
+    # Combined Log Format (standard Apache access log)
     m = _ACCESS_LINE.match(line)
-    if not m:
-        return None
-    source_ip, timestamp_str, method, resource, status_code = m.groups()
-    return {
-        "timestamp": timestamp_str,
-        "source_ip": source_ip,
-        "method": method,
-        "resource": resource,
-        "status_code": status_code,
-        "raw": line,
-    }
+    if m:
+        source_ip, timestamp_str, method, resource, status_code = m.groups()
+        return {
+            "timestamp": timestamp_str,
+            "source_ip": source_ip,
+            "method": method,
+            "resource": resource,
+            "status_code": status_code,
+            "raw": line,
+        }
+    # Apache error log format: [Day Mon DD HH:MM:SS YYYY] [level] [client IP] message
+    # Only lines with a client IP carry enough info for detection.
+    err_m = _APACHE_ERROR_LINE.match(line)
+    if err_m:
+        ts_raw, level, client_ip, message = err_m.groups()
+        if not client_ip:
+            return None  # daemon-level message — no request data
+        try:
+            ts_norm = re.sub(r'\s+', ' ', ts_raw.strip())
+            dt = datetime.strptime(ts_norm, "%a %b %d %H:%M:%S %Y")
+            ts_reformatted = dt.strftime("%d/%b/%Y:%H:%M:%S")
+        except ValueError:
+            return None
+        msg_lower = message.lower()
+        if "forbidden" in msg_lower or "denied" in msg_lower:
+            status_code = "403"
+        elif level == "error":
+            status_code = "500"
+        else:
+            return None  # notice/info — not an error event
+        path_m = _APACHE_ERROR_PATH.search(message)
+        resource = path_m.group(1) if path_m else "/"
+        return {
+            "timestamp": ts_reformatted,
+            "source_ip": client_ip,
+            "method": "GET",
+            "resource": resource,
+            "status_code": status_code,
+            "raw": line,
+        }
+    return None
