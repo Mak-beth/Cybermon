@@ -24,11 +24,11 @@ def pipeline_result(config):
 # --- pipeline correctness ---
 
 def test_pipeline_events_parsed(pipeline_result):
-    assert len(pipeline_result["events"]) == 47
+    assert len(pipeline_result["events"]) == 70
 
 
 def test_pipeline_violations_detected(pipeline_result):
-    assert len(pipeline_result["scored"]) == 12
+    assert len(pipeline_result["scored"]) == 13
 
 
 def test_pipeline_all_three_types_present(pipeline_result):
