@@ -400,3 +400,15 @@ None.
 **Commit hash:**
 
 ---
+
+### Decision — Pipeline clears database on each run
+**Date:** 2026-05-30
+**Context:** NFR-05 requires persistent storage across sessions. The current pipeline calls _clear_tables() before each run.
+**Options considered:**
+1. Keep clear-on-run: simple, prevents duplicate violations, loses history across runs.
+2. Append mode with deduplication: preserves history but requires a uniqueness key per violation (timestamp + username + type) and migration logic.
+**Decision made:** Keep clear-on-run behaviour for the prototype.
+**Reason:** Prevents duplicate violations when the same log files are re-processed. An append mode with deduplication would be needed for production.
+**Impact on PHASES.md:** NFR-05 is met for single-session use. Multi-session accumulation is out of scope for this prototype.
+
+---
