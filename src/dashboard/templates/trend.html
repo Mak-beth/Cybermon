@@ -2,7 +2,7 @@
 {% block title %} — Trend{% endblock %}
 
 {% block content %}
-<h1>Today's violations by hour</h1>
+<h1>Today's Violations by Hour and Type</h1>
 
 {% set any_data = (trend_data.failed_logins | sum)
                 + (trend_data.unauthorized_access | sum)

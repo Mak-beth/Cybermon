@@ -74,11 +74,23 @@ function initHourlyTrendChart(hours, failed, unauthorized, offhours) {
         x: {
           ticks: { color: "#6e7681" },
           grid:  { color: "#21262d" },
+          title: {
+            display: true,
+            text: "Hour of Day (00–23)",
+            color: "#aaa",
+            font: { size: 12 },
+          },
         },
         y: {
           beginAtZero: true,
           ticks: { color: "#6e7681", stepSize: 1, precision: 0 },
           grid:  { color: "#21262d" },
+          title: {
+            display: true,
+            text: "Number of Violations",
+            color: "#aaa",
+            font: { size: 12 },
+          },
         },
       },
     },
