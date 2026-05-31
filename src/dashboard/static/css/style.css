@@ -107,7 +107,29 @@ h2 { font-size: 0.95rem; font-weight: 600; color: #8b949e; text-transform: upper
 .chart-wrap { position: relative; }
 .chart-wrap.tall { max-height: 380px; }
 #severityChart { max-height: 280px; }
-#trendChart { max-height: 360px; }
+#trendChart  { max-height: 360px; }
+#weekChart   { max-height: 360px; }
+
+/* ── Trend tabs ── */
+.trend-tabs {
+  display: flex;
+  border-bottom: 1px solid #30363d;
+  margin-bottom: 1.5rem;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: inherit;
+  padding: 0.55rem 1.2rem;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab-btn:hover  { color: #c9d1d9; }
+.tab-btn.active { color: #e6edf3; border-bottom-color: #dc3545; }
 
 /* ── Counts table ── */
 .counts-table { width: 100%; border-collapse: collapse; }

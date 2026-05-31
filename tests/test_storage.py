@@ -10,6 +10,7 @@ from src.storage.reader import (
     get_violation_detail,
     get_trend_data,
     get_trend_by_hour_today,
+    get_trend_by_day_week,
 )
 
 TEST_DB = "data/test_phase4.db"
@@ -277,6 +278,43 @@ def test_get_trend_by_hour_today_captures_todays_violations(db_path):
     result = get_trend_by_hour_today(db_path)
     hour_idx = int(now.strftime("%H"))
     assert result["unauthorized_access"][hour_idx] == 1
+
+
+# --- get_trend_by_day_week ---
+
+def test_get_trend_by_day_week_returns_correct_keys(db_path):
+    init_db(db_path)
+    result = get_trend_by_day_week(db_path)
+    assert set(result.keys()) == {"dates", "failed_logins", "unauthorized_access", "off_hours_login"}
+
+
+def test_get_trend_by_day_week_has_7_dates(db_path):
+    init_db(db_path)
+    result = get_trend_by_day_week(db_path)
+    assert len(result["dates"]) == 7
+
+
+def test_get_trend_by_day_week_count_lists_have_7_entries(db_path):
+    init_db(db_path)
+    result = get_trend_by_day_week(db_path)
+    for key in ("failed_logins", "unauthorized_access", "off_hours_login"):
+        assert len(result[key]) == 7
+
+
+def test_get_trend_by_day_week_counts_are_non_negative_integers(db_path):
+    init_db(db_path)
+    result = get_trend_by_day_week(db_path)
+    for key in ("failed_logins", "unauthorized_access", "off_hours_login"):
+        for count in result[key]:
+            assert isinstance(count, int)
+            assert count >= 0
+
+
+def test_get_trend_by_day_week_today_is_last_date(db_path):
+    from datetime import date
+    init_db(db_path)
+    result = get_trend_by_day_week(db_path)
+    assert result["dates"][-1] == date.today().isoformat()
 
 
 # --- no data persists after fixture cleanup ---

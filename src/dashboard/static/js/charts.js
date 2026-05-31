@@ -97,6 +97,79 @@ function initHourlyTrendChart(hours, failed, unauthorized, offhours) {
   });
 }
 
+function initWeeklyTrendChart(dates, failed, unauthorized, offhours) {
+  const ctx = document.getElementById("weekChart").getContext("2d");
+
+  function radii(data) {
+    return data.map(function(v) { return v > 0 ? 4 : 0; });
+  }
+
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: "Failed Logins",
+          data: failed,
+          borderColor: "#dc3545",
+          tension: 0.3,
+          fill: false,
+          pointRadius: radii(failed),
+          pointHoverRadius: 5,
+        },
+        {
+          label: "Unauthorized Access",
+          data: unauthorized,
+          borderColor: "#ffc107",
+          tension: 0.3,
+          fill: false,
+          pointRadius: radii(unauthorized),
+          pointHoverRadius: 5,
+        },
+        {
+          label: "Off-Hours Login",
+          data: offhours,
+          borderColor: "#3fb950",
+          tension: 0.3,
+          fill: false,
+          pointRadius: radii(offhours),
+          pointHoverRadius: 5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: "#8b949e" } },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#6e7681" },
+          grid:  { color: "#21262d" },
+          title: {
+            display: true,
+            text: "Date",
+            color: "#aaa",
+            font: { size: 12 },
+          },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: "#6e7681", stepSize: 1, precision: 0 },
+          grid:  { color: "#21262d" },
+          title: {
+            display: true,
+            text: "Number of Violations",
+            color: "#aaa",
+            font: { size: 12 },
+          },
+        },
+      },
+    },
+  });
+}
+
 function initTrendChart(labels, counts) {
   const ctx = document.getElementById("trendChart").getContext("2d");
   new Chart(ctx, {

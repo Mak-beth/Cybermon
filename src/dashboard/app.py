@@ -20,6 +20,7 @@ from src.storage.reader import (
     get_violation_detail,
     get_trend_data,
     get_trend_by_hour_today,
+    get_trend_by_day_week,
 )
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -90,8 +91,9 @@ def not_found(e):
 
 @app.route("/trend")
 def trend():
-    trend_data = get_trend_by_hour_today(DB_PATH)
-    return render_template("trend.html", trend_data=trend_data)
+    today_data = get_trend_by_hour_today(DB_PATH)
+    week_data  = get_trend_by_day_week(DB_PATH)
+    return render_template("trend.html", today_data=today_data, week_data=week_data)
 
 
 @app.route("/export")

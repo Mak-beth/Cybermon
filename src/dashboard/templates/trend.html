@@ -4,34 +4,84 @@
 {% block content %}
 <h1>Today's Violations by Hour and Type</h1>
 
-{% set any_data = (trend_data.failed_logins | sum)
-                + (trend_data.unauthorized_access | sum)
-                + (trend_data.off_hours_login | sum) %}
-
-{% if any_data > 0 %}
-<div class="card">
-  <div class="chart-wrap tall">
-    <canvas id="trendChart"></canvas>
-  </div>
+<div class="trend-tabs">
+  <button class="tab-btn active" id="tab-today" onclick="showTab('today')">Today</button>
+  <button class="tab-btn"        id="tab-week"  onclick="showTab('week')">Past 7 Days</button>
 </div>
-{% else %}
-<p class="empty">No violations recorded today.</p>
-{% endif %}
+
+{# Today panel #}
+{% set today_any = (today_data.failed_logins | sum)
+                 + (today_data.unauthorized_access | sum)
+                 + (today_data.off_hours_login | sum) %}
+<div id="panel-today">
+  {% if today_any > 0 %}
+  <div class="card">
+    <div class="chart-wrap tall">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+  {% else %}
+  <p class="empty">No violations recorded today.</p>
+  {% endif %}
+</div>
+
+{# Past 7 Days panel #}
+{% set week_any = (week_data.failed_logins | sum)
+                + (week_data.unauthorized_access | sum)
+                + (week_data.off_hours_login | sum) %}
+<div id="panel-week" style="display:none">
+  {% if week_any > 0 %}
+  <div class="card">
+    <div class="chart-wrap tall">
+      <canvas id="weekChart"></canvas>
+    </div>
+  </div>
+  {% else %}
+  <p class="empty">No violations in the past 7 days.</p>
+  {% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}
-{% set any_data = (trend_data.failed_logins | sum)
-                + (trend_data.unauthorized_access | sum)
-                + (trend_data.off_hours_login | sum) %}
-{% if any_data > 0 %}
 <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+
+{# Initialise today chart immediately (panel is visible) #}
+{% set today_any = (today_data.failed_logins | sum)
+                 + (today_data.unauthorized_access | sum)
+                 + (today_data.off_hours_login | sum) %}
+{% if today_any > 0 %}
 <script>
   initHourlyTrendChart(
-    {{ trend_data.hours          | tojson }},
-    {{ trend_data.failed_logins  | tojson }},
-    {{ trend_data.unauthorized_access | tojson }},
-    {{ trend_data.off_hours_login     | tojson }}
+    {{ today_data.hours               | tojson }},
+    {{ today_data.failed_logins       | tojson }},
+    {{ today_data.unauthorized_access | tojson }},
+    {{ today_data.off_hours_login     | tojson }}
   );
 </script>
 {% endif %}
+
+{# Pass week data to JS; chart is lazy-initialised when the tab is first opened #}
+{% set week_any = (week_data.failed_logins | sum)
+                + (week_data.unauthorized_access | sum)
+                + (week_data.off_hours_login | sum) %}
+<script>
+  var _weekDates        = {{ week_data.dates               | tojson }};
+  var _weekFailed       = {{ week_data.failed_logins        | tojson }};
+  var _weekUnauth       = {{ week_data.unauthorized_access  | tojson }};
+  var _weekOffhours     = {{ week_data.off_hours_login      | tojson }};
+  var _weekHasData      = {{ (1 if week_any > 0 else 0) }};
+  var _weekInitialised  = false;
+
+  function showTab(tab) {
+    document.getElementById('panel-today').style.display = tab === 'today' ? '' : 'none';
+    document.getElementById('panel-week').style.display  = tab === 'week'  ? '' : 'none';
+    document.getElementById('tab-today').classList.toggle('active', tab === 'today');
+    document.getElementById('tab-week').classList.toggle('active',  tab === 'week');
+
+    if (tab === 'week' && _weekHasData && !_weekInitialised) {
+      initWeeklyTrendChart(_weekDates, _weekFailed, _weekUnauth, _weekOffhours);
+      _weekInitialised = true;
+    }
+  }
+</script>
 {% endblock %}

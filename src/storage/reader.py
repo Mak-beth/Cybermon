@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date, timedelta
 
 
 def get_all_violations_with_scores(db_path: str) -> list[dict]:
@@ -80,6 +81,41 @@ def get_trend_by_hour_today(db_path: str) -> dict:
         idx = int(hour_str)
         if vtype in result:
             result[vtype][idx] = count
+    return result
+
+
+def get_trend_by_day_week(db_path: str) -> dict:
+    """Return violation counts grouped by date and type for the past 7 days.
+
+    The returned dict always has exactly 7 date entries (6 days ago through
+    today) so the chart has a fixed, predictable x-axis even on quiet days.
+    """
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DATE(timestamp) AS day,
+               violation_type,
+               COUNT(*) AS count
+        FROM violations
+        WHERE DATE(timestamp) >= DATE('now', '-6 days')
+        GROUP BY day, violation_type
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    today = date.today()
+    dates = [(today - timedelta(days=6 - i)).isoformat() for i in range(7)]
+    date_idx = {d: i for i, d in enumerate(dates)}
+
+    result = {
+        "dates":              dates,
+        "failed_logins":       [0] * 7,
+        "unauthorized_access": [0] * 7,
+        "off_hours_login":     [0] * 7,
+    }
+    for day_str, vtype, count in rows:
+        if day_str in date_idx and vtype in result:
+            result[vtype][date_idx[day_str]] = count
     return result
 
 
