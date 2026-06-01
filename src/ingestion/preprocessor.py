@@ -4,9 +4,15 @@ from src.ingestion.parser import parse_auth_log_line, parse_access_log_line
 
 
 def _parse_auth_timestamp(ts_str: str) -> datetime:
-    year = datetime.now().year
     normalized = " ".join(ts_str.strip().split())
-    return datetime.strptime(f"{year} {normalized}", "%Y %b %d %H:%M:%S")
+    now = datetime.now()
+    # Auth logs omit the year. Try current year; if the result is in the
+    # future (log file pre-dates this run), fall back to the previous year.
+    for year in (now.year, now.year - 1):
+        dt = datetime.strptime(f"{year} {normalized}", "%Y %b %d %H:%M:%S")
+        if dt <= now:
+            return dt
+    return dt
 
 
 def _parse_access_timestamp(ts_str: str) -> datetime:
