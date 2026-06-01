@@ -145,7 +145,8 @@ def test_get_all_violations_has_expected_keys(populated_db):
     db_path, _, _ = populated_db
     results = get_all_violations_with_scores(db_path)
     required = {"id", "violation_type", "timestamp", "username", "source_ip",
-                "resource", "detail", "likelihood", "impact", "risk_score", "severity"}
+                "resource", "detail", "source_host", "likelihood", "impact",
+                "risk_score", "severity"}
     for row in results:
         assert required.issubset(set(row.keys()))
 
@@ -268,9 +269,9 @@ def test_get_trend_by_hour_today_captures_todays_violations(db_path):
     conn = sqlite3.connect(db_path)
     conn.execute(
         "INSERT INTO violations "
-        "(violation_type, timestamp, username, source_ip, resource, detail) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        ("unauthorized_access", now.isoformat(), None, "10.0.0.1", "/admin", "test"),
+        "(violation_type, timestamp, username, source_ip, resource, detail, source_host) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("unauthorized_access", now.isoformat(), None, "10.0.0.1", "/admin", "test", "localhost"),
     )
     conn.commit()
     conn.close()

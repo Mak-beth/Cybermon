@@ -8,7 +8,7 @@ def get_all_violations_with_scores(db_path: str) -> list[dict]:
     cur = conn.cursor()
     cur.execute("""
         SELECT v.id, v.violation_type, v.timestamp, v.username, v.source_ip,
-               v.resource, v.detail,
+               v.resource, v.detail, v.source_host,
                r.likelihood, r.impact, r.risk_score, r.severity
         FROM violations v
         JOIN risk_scores r ON r.violation_id = v.id
@@ -46,7 +46,7 @@ def get_violation_detail(violation_id: int, db_path: str) -> dict:
     cur = conn.cursor()
     cur.execute("""
         SELECT v.id, v.violation_type, v.timestamp, v.username, v.source_ip,
-               v.resource, v.detail,
+               v.resource, v.detail, v.source_host,
                r.likelihood, r.impact, r.risk_score, r.severity
         FROM violations v
         JOIN risk_scores r ON r.violation_id = v.id

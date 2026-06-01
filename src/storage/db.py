@@ -17,7 +17,8 @@ def init_db(db_path: str) -> None:
             resource    TEXT,
             action      TEXT,
             status_code TEXT,
-            log_type    TEXT
+            log_type    TEXT,
+            source_host TEXT NOT NULL DEFAULT 'localhost'
         );
 
         CREATE TABLE IF NOT EXISTS violations (
@@ -27,7 +28,8 @@ def init_db(db_path: str) -> None:
             username       TEXT,
             source_ip      TEXT,
             resource       TEXT,
-            detail         TEXT
+            detail         TEXT,
+            source_host    TEXT NOT NULL DEFAULT 'localhost'
         );
 
         CREATE TABLE IF NOT EXISTS risk_scores (
@@ -37,6 +39,7 @@ def init_db(db_path: str) -> None:
             impact       INTEGER NOT NULL,
             risk_score   INTEGER NOT NULL,
             severity     TEXT NOT NULL,
+            source_host  TEXT NOT NULL DEFAULT 'localhost',
             FOREIGN KEY (violation_id) REFERENCES violations(id)
         );
     """)

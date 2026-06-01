@@ -1,3 +1,4 @@
+import socket
 from datetime import datetime
 from src.ingestion.reader import read_log_file
 from src.ingestion.parser import parse_auth_log_line, parse_access_log_line
@@ -21,6 +22,7 @@ def _parse_access_timestamp(ts_str: str) -> datetime:
 
 
 def normalize_event(parsed: dict, log_type: str) -> dict:
+    host = socket.gethostname()
     if log_type == "auth":
         return {
             "timestamp": _parse_auth_timestamp(parsed["timestamp"]),
@@ -29,6 +31,7 @@ def normalize_event(parsed: dict, log_type: str) -> dict:
             "resource": None,
             "action": "ssh_login",
             "status_code": "SUCCESS" if parsed["status"] == "success" else "FAILED",
+            "source_host": host,
         }
     if log_type == "web":
         return {
@@ -38,6 +41,7 @@ def normalize_event(parsed: dict, log_type: str) -> dict:
             "resource": parsed.get("resource"),
             "action": "http_request",
             "status_code": parsed.get("status_code", ""),
+            "source_host": host,
         }
     raise ValueError(f"Unknown log_type: {log_type}")
 
