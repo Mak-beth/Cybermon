@@ -3,3 +3,5 @@ pandas
 pyyaml
 pytest
 requests
+PyQt6>=6.6.0
+PyQtGraph>=0.13.0

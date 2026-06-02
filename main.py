@@ -1,5 +1,6 @@
 import argparse
 import sqlite3
+import sys
 import threading
 import time
 import yaml
@@ -92,7 +93,7 @@ def _start_ingest_server(config: dict) -> None:
     t.start()
     print(f"\nIngest endpoint -> http://{ingest_host}:{ingest_port}/ingest")
 
-    # Give the ingest server time to bind its socket before the dashboard starts.
+    # Give the ingest server time to bind its socket before the Qt window starts.
     time.sleep(1)
 
 
@@ -102,53 +103,30 @@ def main():
                         help="Path to Linux auth log file")
     parser.add_argument("--web-log", default="logs/samples/access.log",
                         help="Path to Apache access log file")
-    parser.add_argument("--live", action="store_true",
-                        help="Start live monitoring mode — watches log files continuously")
     args = parser.parse_args()
 
     # 1. Load config
     config = yaml.safe_load(open("config/config.yaml"))
     mode = config.get("mode", "standalone")
 
+    # 2. Run ingestion + detection + scoring pipeline
     run_pipeline(args.auth_log, args.web_log, config)
 
-    # Network mode: start ingest endpoint on a background daemon thread first.
+    # 3. Network mode: start ingest endpoint on a background daemon thread.
+    #    Standalone mode: ingest endpoint is not started.
     if mode == "network":
         _start_ingest_server(config)
 
-    # Dashboard (both modes)
-    host = config["dashboard"]["host"]
-    port = config["dashboard"]["port"]
+    # 4. Launch the PyQt6 desktop window.
+    #    Imports are inside main() so that `from main import run_pipeline`
+    #    in tests never triggers Qt at import time.
+    from PyQt6.QtWidgets import QApplication
+    from src.gui.main_window import MainWindow
 
-    if args.live:
-        from src.ingestion.watcher import LogWatcher
-        from src.dashboard.app import app, post_violation
-        from src.storage.writer import insert_violation, insert_risk_score
-
-        watcher = LogWatcher(config)
-
-        def live_callback(v: dict) -> None:
-            db_path = config["storage"]["db_path"]
-            vid = insert_violation(v, db_path)
-            insert_risk_score(vid, v, db_path)
-            post_violation(v)
-
-        watcher.start(args.auth_log, args.web_log, live_callback)
-
-        print(f"\nLive monitoring active - watching {args.auth_log} and {args.web_log}")
-        print(f"Dashboard -> http://{host}:{port}")
-        print("Press Ctrl+C to stop.\n")
-    else:
-        from src.dashboard.app import app
-
-        print(f"\nLaunching dashboard -> http://{host}:{port}")
-        print("Press Ctrl+C to stop.\n")
-
-    # use_reloader=False is required in live mode: the reloader forks a child
-    # process which gets its own _violation_queue, severing the watcher->SSE link.
-    use_reloader = not args.live
-    app.run(host=host, port=port, debug=config["dashboard"]["debug"],
-            use_reloader=use_reloader, threaded=True)
+    app = QApplication(sys.argv)
+    window = MainWindow(config)
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

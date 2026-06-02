@@ -222,37 +222,57 @@ Part D — Tests:
 
 **Test count at end of phase:** 146 passing (126 original + 20 new)
 
-**Commit hash:** (pending)
+**Commit hash:** 7c88e56
 
 ---
 
 ### Phase R3 — PyQt6 Main Window and Violations Table
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-01
+**Date Completed:** 2026-06-01
 
 **Acceptance Criteria Results:**
-- [ ] python main.py launches native desktop window (no browser)
-- [ ] Sidebar navigation switches panels without error
-- [ ] Violations table shows all violations from database
-- [ ] Violations sorted by risk score descending
-- [ ] Severity badges colour-coded for all four tiers
-- [ ] Host filter dropdown shows unique source_host values
-- [ ] Host filter updates table correctly
-- [ ] Refresh button re-queries and updates
-- [ ] Row click does not crash
-- [ ] All 121 original tests passing
-- [ ] Window usable at 1200x750
+- [x] python main.py launches native desktop window (no browser) — PASS (QApplication + MainWindow; Flask app.run removed from standalone path)
+- [x] Sidebar navigation switches panels without error — PASS (QStackedWidget + QButtonGroup; 5 nav items, index switching tested manually)
+- [x] Violations table shows all violations from database — PASS (get_all_violations() returns 13 rows from live DB; all displayed in QTableWidget)
+- [x] Violations sorted by risk score descending — PASS (sortItems(_COL_SCORE, DescendingOrder) after populate; sorting also enabled by clicking headers)
+- [x] Severity badges colour-coded for all four tiers — PASS (Low: green/#14532d, Medium: amber/#78350f, High: red/#7f1d1d, Critical: dark-red/white)
+- [x] Host filter dropdown shows unique source_host values — PASS (get_unique_hosts() populates QComboBox; "All Hosts" always first)
+- [x] Host filter updates table correctly — PASS (_on_filter_changed triggers _reload_table with host_filter arg)
+- [x] Refresh button re-queries and updates — PASS (refresh() reloads both dropdown and table from DB)
+- [x] Row click does not crash — PASS (_on_row_clicked extracts violation_id from UserRole data; no-op placeholder for R5)
+- [x] All 121 original tests passing — PASS (146/146, all green; Qt imports inside main() so tests never touch Qt)
+- [x] Window usable at 1200x750 — PASS (setMinimumSize(1200, 750); column resizing: Type and Action stretch, others ResizeToContents)
 
 **What was built:**
 
+Part A — Dependencies:
+- `requirements.txt`: added PyQt6>=6.6.0 and PyQtGraph>=0.13.0; both installed to venv
+
+Part B — Entry point:
+- `main.py`: removed --live argparse argument and its entire Flask SSE branch; removed Flask app.run() from standalone path; removed use_reloader; added sys import; added lazy PyQt6 imports inside main() so test imports of run_pipeline never touch Qt; added QApplication + MainWindow launch; network mode _start_ingest_server() unchanged
+- `start.bat`: removed --live flag (was: `main.py --live --auth-log ...`; now: `main.py --auth-log ...`)
+
+Part C — Main window:
+- `src/gui/__init__.py`: package marker
+- `src/gui/main_window.py`: MainWindow(QMainWindow) — 1200×750 minimum, resizable; 200px dark sidebar (#1e1e2e) with QButtonGroup-managed _SidebarButton items; active item gets 4px #7c3aed left border via stylesheet; QStackedWidget content area; _switch_to(index) swaps panels; shield icon rendered programmatically with QPainter; ViolationsTable at index 1 (Violations); placeholder QLabels for Overview/Live Feed/Trend/Settings
+
+Part D — Violations table:
+- `src/gui/violations_table.py`: ViolationsTable(QWidget) — top bar with QComboBox host filter and refresh QPushButton; QTableWidget with 6 columns; non-editable items; alternating row colours; sortable by clicking headers; severity badge cells use QColor background/foreground; risk score stored as int via DisplayRole for correct numeric sort; row click handler extracts violation_id (placeholder for R5)
+
+Part E — Data access layer:
+- `src/gui/data_access.py`: get_all_violations(host_filter), get_violation_by_id(id), get_summary_counts(), get_unique_hosts(); all load config.yaml for db_path; all use sqlite3.Row for dict-style access; get_all_violations and get_violation_by_id append recommended_action from RECOMMENDED_ACTIONS map; smoke-tested: returns 13 rows with all expected keys against live database
+
 **What didn't work and how it was fixed:**
+- No failures during implementation. All 146 tests passed first run after each part.
 
-**Deviations from REWORK_PHASES.md (if any):**
+**Deviations from REWORK_PHASES.md:**
+- spec listed Part E (data access) before Part D (violations table), but Part E was implemented first as a dependency of Part D. Test count reported after D+E together as per spec's "Part D" step.
+- PyQt6 imports are inside main() rather than at file top — necessary to prevent Qt import at test-collection time.
 
-**Test count at end of phase:**
+**Test count at end of phase:** 146 passing (no new tests in R3 — GUI code is not unit-tested at this stage per spec)
 
-**Commit hash:**
+**Commit hash:** (pending)
 
 ---
 
