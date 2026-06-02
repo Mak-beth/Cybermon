@@ -29,11 +29,11 @@ _CONTENT_BG      = "#f8f9fa"
 
 # Sidebar item order matches QStackedWidget index
 _NAV_ITEMS = [
-    ("Overview",   "Overview panel — available in R4"),
-    ("Violations", None),          # real panel: ViolationsTable
-    ("Live Feed",  "Live feed panel — available in R5"),
-    ("Trend",      "Trend panel — available in R4"),
-    ("Settings",   "Settings panel — available in R6"),
+    "Overview",
+    "Violations",
+    "Live Feed",
+    "Trend",
+    "Settings",
 ]
 
 
@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         self._config = config
         self._setup_window()
         self._build_ui()
-        self._switch_to(1)   # default to Violations panel
+        self._switch_to(0)   # default to Overview panel
 
     # ------------------------------------------------------------------
     # Window setup
@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
         self._btn_group.setExclusive(True)
         self._nav_buttons: list[_SidebarButton] = []
 
-        for idx, (label, _) in enumerate(_NAV_ITEMS):
+        for idx, label in enumerate(_NAV_ITEMS):
             btn = _SidebarButton(label)
             self._btn_group.addButton(btn, idx)
             layout.addWidget(btn)
@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # Version stamp at bottom
-        ver = QLabel("v2.0 — R3")
+        ver = QLabel("v2.0 — R4")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver.setFixedHeight(32)
         ver.setStyleSheet(f"color: #4a4a6a; font-size: 11px; background: {_SIDEBAR_BG};")
@@ -214,16 +214,20 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setStyleSheet(f"background-color: {_CONTENT_BG};")
 
-        # Import ViolationsTable lazily to keep this file importable without
-        # data_access.py existing yet during early development.
+        # Imports are lazy (inside the method) so importing main_window at the
+        # module level in tests never triggers Qt widget construction.
+        from src.gui.overview_panel   import OverviewPanel
         from src.gui.violations_table import ViolationsTable
+        from src.gui.trend_panel      import TrendPanel
 
-        for idx, (_, placeholder_text) in enumerate(_NAV_ITEMS):
-            if placeholder_text is None:
-                # Real panel
-                panel = ViolationsTable(self._config, parent=self)
-            else:
-                panel = _PlaceholderPanel(placeholder_text, parent=self)
+        panels = [
+            OverviewPanel(self._config,   parent=self),                           # 0 Overview
+            ViolationsTable(self._config, parent=self),                           # 1 Violations
+            _PlaceholderPanel("Live feed panel — available in R5", parent=self),  # 2 Live Feed
+            TrendPanel(self._config,      parent=self),                           # 3 Trend
+            _PlaceholderPanel("Settings panel — available in R6", parent=self),   # 4 Settings
+        ]
+        for panel in panels:
             self._stack.addWidget(panel)
 
         return self._stack

@@ -113,8 +113,12 @@ def get_violation_by_id(violation_id: int) -> dict:
     return d
 
 
-def get_summary_counts() -> dict:
+def get_summary_counts(host_filter: str | None = None) -> dict:
     """Return aggregate counts for the overview panel.
+
+    Args:
+        host_filter: If provided (and not "All Hosts"), restrict counts to
+                     violations whose source_host matches exactly.
 
     Returns:
         {
@@ -125,23 +129,45 @@ def get_summary_counts() -> dict:
                              "High": int, "Critical": int},
         }
     """
+    filtered = bool(host_filter and host_filter != "All Hosts")
     conn = _connect()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM violations")
+    if filtered:
+        cur.execute(
+            "SELECT COUNT(*) FROM violations WHERE source_host = ?",
+            (host_filter,),
+        )
+    else:
+        cur.execute("SELECT COUNT(*) FROM violations")
     total = cur.fetchone()[0]
 
     by_type = {"failed_logins": 0, "unauthorized_access": 0, "off_hours_login": 0}
-    cur.execute(
-        "SELECT violation_type, COUNT(*) FROM violations GROUP BY violation_type"
-    )
+    if filtered:
+        cur.execute(
+            "SELECT violation_type, COUNT(*) FROM violations "
+            "WHERE source_host = ? GROUP BY violation_type",
+            (host_filter,),
+        )
+    else:
+        cur.execute(
+            "SELECT violation_type, COUNT(*) FROM violations GROUP BY violation_type"
+        )
     for vtype, count in cur.fetchall():
         by_type[vtype] = count
 
     by_severity = {"Low": 0, "Medium": 0, "High": 0, "Critical": 0}
-    cur.execute(
-        "SELECT severity, COUNT(*) FROM risk_scores GROUP BY severity"
-    )
+    if filtered:
+        # risk_scores.source_host is populated in R1 — no JOIN needed
+        cur.execute(
+            "SELECT severity, COUNT(*) FROM risk_scores "
+            "WHERE source_host = ? GROUP BY severity",
+            (host_filter,),
+        )
+    else:
+        cur.execute(
+            "SELECT severity, COUNT(*) FROM risk_scores GROUP BY severity"
+        )
     for severity, count in cur.fetchall():
         by_severity[severity] = count
 
@@ -159,3 +185,116 @@ def get_unique_hosts() -> list[str]:
     hosts = [row[0] for row in cur.fetchall()]
     conn.close()
     return hosts
+
+
+def get_trend_by_hour_today(host_filter: str | None = None) -> dict:
+    """Return violation counts grouped by hour for today.
+
+    Returns:
+        {
+            "hours": ["00", "01", ..., "23"],
+            "failed_logins":       [int * 24],
+            "unauthorized_access": [int * 24],
+            "off_hours_login":     [int * 24],
+        }
+    """
+    filtered = bool(host_filter and host_filter != "All Hosts")
+    conn = _connect()
+    cur = conn.cursor()
+
+    if filtered:
+        cur.execute("""
+            SELECT strftime('%H', timestamp) AS hour,
+                   violation_type,
+                   COUNT(*) AS cnt
+            FROM violations
+            WHERE DATE(timestamp) = DATE('now')
+              AND source_host = ?
+            GROUP BY hour, violation_type
+        """, (host_filter,))
+    else:
+        cur.execute("""
+            SELECT strftime('%H', timestamp) AS hour,
+                   violation_type,
+                   COUNT(*) AS cnt
+            FROM violations
+            WHERE DATE(timestamp) = DATE('now')
+            GROUP BY hour, violation_type
+        """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    result: dict = {
+        "hours":              [f"{h:02d}" for h in range(24)],
+        "failed_logins":       [0] * 24,
+        "unauthorized_access": [0] * 24,
+        "off_hours_login":     [0] * 24,
+    }
+    for row in rows:
+        idx = int(row["hour"])
+        vtype = row["violation_type"]
+        if vtype in result:
+            result[vtype][idx] = row["cnt"]
+    return result
+
+
+def get_trend_by_day_week(host_filter: str | None = None) -> dict:
+    """Return violation counts grouped by date for the last 7 days.
+
+    Always returns exactly 7 dates (6 days ago through today) so the chart
+    has a predictable x-axis even on quiet days.
+
+    Returns:
+        {
+            "dates": ["YYYY-MM-DD", ...],   # 7 entries
+            "failed_logins":       [int * 7],
+            "unauthorized_access": [int * 7],
+            "off_hours_login":     [int * 7],
+        }
+    """
+    from datetime import date, timedelta
+
+    filtered = bool(host_filter and host_filter != "All Hosts")
+    conn = _connect()
+    cur = conn.cursor()
+
+    if filtered:
+        cur.execute("""
+            SELECT DATE(timestamp) AS day,
+                   violation_type,
+                   COUNT(*) AS cnt
+            FROM violations
+            WHERE DATE(timestamp) >= DATE('now', '-6 days')
+              AND source_host = ?
+            GROUP BY day, violation_type
+        """, (host_filter,))
+    else:
+        cur.execute("""
+            SELECT DATE(timestamp) AS day,
+                   violation_type,
+                   COUNT(*) AS cnt
+            FROM violations
+            WHERE DATE(timestamp) >= DATE('now', '-6 days')
+            GROUP BY day, violation_type
+        """)
+
+    rows = cur.fetchall()
+    conn.close()
+
+    today = date.today()
+    dates = [(today - timedelta(days=6 - i)).isoformat() for i in range(7)]
+    date_idx = {d: i for i, d in enumerate(dates)}
+
+    result: dict = {
+        "dates":              dates,
+        "failed_logins":       [0] * 7,
+        "unauthorized_access": [0] * 7,
+        "off_hours_login":     [0] * 7,
+    }
+    for row in rows:
+        day = row["day"]
+        vtype = row["violation_type"]
+        if day in date_idx and vtype in result:
+            result[vtype][date_idx[day]] = row["cnt"]
+    return result

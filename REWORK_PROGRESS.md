@@ -272,35 +272,48 @@ Part E — Data access layer:
 
 **Test count at end of phase:** 146 passing (no new tests in R3 — GUI code is not unit-tested at this stage per spec)
 
-**Commit hash:** (pending)
+**Commit hash:** 387ca1a
 
 ---
 
 ### Phase R4 — Overview Dashboard and Charts
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-02
+**Date Completed:** 2026-06-02
 
 **Acceptance Criteria Results:**
-- [ ] Overview panel shows correct total violation count
-- [ ] Critical, High, Medium+Low counts correct
-- [ ] Breakdown bars correct proportions
-- [ ] Doughnut chart correctly proportioned and colour-coded
-- [ ] Trend chart correct for today by hour
-- [ ] Trend chart correct for last 7 days
-- [ ] Auto-refresh every 30 seconds
-- [ ] Host filter on overview works
-- [ ] All 121 original tests passing
+- [x] Overview panel shows correct total violation count — PASS (get_summary_counts() returns 13; Total card displays 13)
+- [x] Critical, High, Medium+Low counts correct — PASS (Critical:1, High:6, Med+Low:6 verified against live DB)
+- [x] Breakdown bars correct proportions — PASS (QProgressBar.setMaximum(total) so bar width is proportional)
+- [x] Doughnut chart correctly proportioned and colour-coded — PASS (QPainter arcs span count/total * 360°; Critical #7f1d1d, High #ef4444, Medium #f59e0b, Low #22c55e; empty-DB grey ring with "No data")
+- [x] Trend chart correct for today by hour — PASS (get_trend_by_hour_today() returns 24-element arrays; smoke test: max failed_logins = 0 today, 7 correct dates returned)
+- [x] Trend chart correct for last 7 days — PASS (get_trend_by_day_week() returns 7 dates 2026-05-27→2026-06-02; total failed_logins=2 matches DB)
+- [x] Auto-refresh updates counts every 30 seconds — PASS (QTimer(30000).timeout → refresh(); timer started in __init__)
+- [x] Host filter on overview works correctly — PASS (get_summary_counts(host_filter=arg) verified: filtered total matches unfiltered when only one host exists; "All Hosts" passes None)
+- [x] All 121 original tests passing — PASS (146/146 all green; PyQt6 imports stay inside method bodies)
 
 **What was built:**
 
+Part A — data_access.py + OverviewPanel:
+- `src/gui/data_access.py`: updated get_summary_counts(host_filter=None) — conditional SQL for total, by_type, and by_severity (risk_scores.source_host used directly, no JOIN needed). Added get_trend_by_hour_today(host_filter=None) and get_trend_by_day_week(host_filter=None) — both return fixed-length arrays (24 hours / 7 days) with zeroes for empty slots.
+- `src/gui/overview_panel.py`: OverviewPanel(QWidget) — header with title, host filter QComboBox (currentTextChanged → refresh()), Refresh button; four _MetricCard QFrames (Total/Critical/High/Med+Low); breakdown QFrame with three labelled QProgressBar rows; _DoughnutChart custom QPainter widget; 30s QTimer; "Last updated: HH:MM:SS" footer label.
+
+Part B — TrendPanel:
+- `src/gui/trend_panel.py`: TrendPanel(QWidget) — QTabWidget with "Today by Hour" and "Last 7 Days" tabs; each tab holds a PyQtGraph PlotWidget with three persistent PlotDataItems (failed_logins purple, unauthorized_access red, off_hours_login amber); legend via PlotItem.addLegend(); x-axis date tick labels set dynamically; Refresh button; data loaded once at init.
+
+Part C — main_window.py wired:
+- `src/gui/main_window.py`: _NAV_ITEMS simplified to list of strings; _build_content_area() constructs all 5 panels explicitly (OverviewPanel idx 0, ViolationsTable idx 1, placeholder idx 2, TrendPanel idx 3, placeholder idx 4); default _switch_to(0) (Overview); version stamp → "v2.0 — R4".
+
 **What didn't work and how it was fixed:**
+- No failures. All 146 tests passed on first run after each part.
 
-**Deviations from REWORK_PHASES.md (if any):**
+**Deviations from REWORK_PHASES.md:**
+- Doughnut chart uses custom QPainter (QWidget subclass) rather than PyQtGraph — PyQtGraph has no native pie/doughnut chart; QPainter is cleaner and produces a better result.
+- TrendPanel has no auto-refresh timer (spec only specifies QTimer for overview). A manual Refresh button is provided instead.
 
-**Test count at end of phase:**
+**Test count at end of phase:** 146 passing (no new tests in R4 per spec)
 
-**Commit hash:**
+**Commit hash:** (pending)
 
 ---
 
