@@ -93,15 +93,22 @@ def get_all_violations(host_filter: str | None = None) -> list[dict]:
 
 
 def get_violation_by_id(violation_id: int) -> dict:
-    """Return a single violation dict, or an empty dict if not found."""
+    """Return a single violation dict, or an empty dict if not found.
+
+    LEFT JOINs to the events table via triggering_event_id to include raw_log.
+    raw_log is None when triggering_event_id is NULL or the event was deleted.
+    """
     conn = _connect()
     cur = conn.cursor()
     cur.execute("""
         SELECT v.id, v.violation_type, v.timestamp, v.username,
                v.source_ip, v.resource, v.detail, v.source_host,
-               r.likelihood, r.impact, r.risk_score, r.severity
+               v.triggering_event_id,
+               r.likelihood, r.impact, r.risk_score, r.severity,
+               e.raw_log
         FROM violations v
         JOIN risk_scores r ON r.violation_id = v.id
+        LEFT JOIN events e ON e.id = v.triggering_event_id
         WHERE v.id = ?
     """, (violation_id,))
     row = cur.fetchone()
@@ -111,6 +118,28 @@ def get_violation_by_id(violation_id: int) -> dict:
     d = dict(row)
     d["recommended_action"] = RECOMMENDED_ACTIONS.get(d["severity"], "")
     return d
+
+
+def get_new_violations_since(last_id: int) -> list[dict]:
+    """Return violations with id > last_id, ordered by id ASC.
+
+    Used by LiveFeedPanel to poll for new violations without duplicates.
+    Returns lightweight dicts (no raw_log — the detail panel fetches that on demand).
+    """
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT v.id, v.violation_type, v.timestamp,
+               v.source_ip, v.source_host,
+               r.risk_score, r.severity
+        FROM violations v
+        JOIN risk_scores r ON r.violation_id = v.id
+        WHERE v.id > ?
+        ORDER BY v.id ASC
+    """, (last_id,))
+    rows = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return rows
 
 
 def get_summary_counts(host_filter: str | None = None) -> dict:

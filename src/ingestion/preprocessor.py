@@ -32,6 +32,7 @@ def normalize_event(parsed: dict, log_type: str) -> dict:
             "action": "ssh_login",
             "status_code": "SUCCESS" if parsed["status"] == "success" else "FAILED",
             "source_host": host,
+            "raw_log": parsed.get("raw"),   # original log line from parser
         }
     if log_type == "web":
         return {
@@ -42,6 +43,7 @@ def normalize_event(parsed: dict, log_type: str) -> dict:
             "action": "http_request",
             "status_code": parsed.get("status_code", ""),
             "source_host": host,
+            "raw_log": parsed.get("raw"),   # original log line from parser
         }
     raise ValueError(f"Unknown log_type: {log_type}")
 

@@ -18,18 +18,20 @@ def init_db(db_path: str) -> None:
             action      TEXT,
             status_code TEXT,
             log_type    TEXT,
-            source_host TEXT NOT NULL DEFAULT 'localhost'
+            source_host TEXT NOT NULL DEFAULT 'localhost',
+            raw_log     TEXT
         );
 
         CREATE TABLE IF NOT EXISTS violations (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            violation_type TEXT NOT NULL,
-            timestamp      TEXT NOT NULL,
-            username       TEXT,
-            source_ip      TEXT,
-            resource       TEXT,
-            detail         TEXT,
-            source_host    TEXT NOT NULL DEFAULT 'localhost'
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            violation_type       TEXT NOT NULL,
+            timestamp            TEXT NOT NULL,
+            username             TEXT,
+            source_ip            TEXT,
+            resource             TEXT,
+            detail               TEXT,
+            source_host          TEXT NOT NULL DEFAULT 'localhost',
+            triggering_event_id  INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS risk_scores (

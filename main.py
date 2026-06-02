@@ -9,7 +9,12 @@ from src.ingestion.preprocessor import preprocess_log_file
 from src.detection.detector import run_detection
 from src.scoring.scorer import score_all_violations
 from src.storage.db import init_db
-from src.storage.writer import insert_events, insert_violation, insert_risk_score
+from src.storage.writer import (
+    insert_events,
+    insert_violation,
+    insert_risk_score,
+    find_triggering_event_id,
+)
 from src.storage.reader import get_summary_counts
 
 
@@ -53,6 +58,7 @@ def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
     # 7. Store violations and scores
     print("[ 4/5 ] Storing results...")
     for v in scored:
+        v["triggering_event_id"] = find_triggering_event_id(v, db_path)
         vid = insert_violation(v, db_path)
         insert_risk_score(vid, v, db_path)
 

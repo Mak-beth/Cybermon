@@ -253,12 +253,14 @@ class ViolationsTable(QWidget):
         self._reload_table()
 
     def _on_row_clicked(self, item: QTableWidgetItem) -> None:
-        """Row click handler — detail panel placeholder for R5."""
+        """Open DetailPanel as a modal dialog for the clicked violation."""
         row = item.row()
         badge = self._table.item(row, _COL_SEVERITY)
         if badge is None:
             return
         violation_id = badge.data(Qt.ItemDataRole.UserRole)
-        # Detail panel will be wired in R5.
-        # For now this is a no-op (does not crash).
-        _ = violation_id
+        if violation_id is None:
+            return
+        from src.gui.detail_panel import DetailPanel
+        panel = DetailPanel(violation_id, parent=self)
+        panel.exec()

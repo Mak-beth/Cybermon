@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # Version stamp at bottom
-        ver = QLabel("v2.0 — R4")
+        ver = QLabel("v2.0 — R5")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver.setFixedHeight(32)
         ver.setStyleSheet(f"color: #4a4a6a; font-size: 11px; background: {_SIDEBAR_BG};")
@@ -218,12 +218,13 @@ class MainWindow(QMainWindow):
         # module level in tests never triggers Qt widget construction.
         from src.gui.overview_panel   import OverviewPanel
         from src.gui.violations_table import ViolationsTable
+        from src.gui.live_feed        import LiveFeedPanel
         from src.gui.trend_panel      import TrendPanel
 
         panels = [
             OverviewPanel(self._config,   parent=self),                           # 0 Overview
             ViolationsTable(self._config, parent=self),                           # 1 Violations
-            _PlaceholderPanel("Live feed panel — available in R5", parent=self),  # 2 Live Feed
+            LiveFeedPanel(self._config,   parent=self),                           # 2 Live Feed
             TrendPanel(self._config,      parent=self),                           # 3 Trend
             _PlaceholderPanel("Settings panel — available in R6", parent=self),   # 4 Settings
         ]

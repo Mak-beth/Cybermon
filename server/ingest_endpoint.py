@@ -78,7 +78,10 @@ def ingest():
     from src.detection.detector import run_detection
     from src.scoring.scorer import score_all_violations
     from src.storage.db import init_db
-    from src.storage.writer import insert_events, insert_violation, insert_risk_score
+    from src.storage.writer import (
+        insert_events, insert_violation, insert_risk_score,
+        find_triggering_event_id,
+    )
 
     init_db(db_path)
 
@@ -103,7 +106,8 @@ def ingest():
     scored = score_all_violations(violations, config)
 
     for v in scored:
-        v["source_host"] = host           # tag violation with agent host
+        v["source_host"] = host                                 # tag with agent host
+        v["triggering_event_id"] = find_triggering_event_id(v, db_path)
         vid = insert_violation(v, db_path)
         insert_risk_score(vid, v, db_path)
 

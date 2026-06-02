@@ -313,31 +313,55 @@ Part C — main_window.py wired:
 
 **Test count at end of phase:** 146 passing (no new tests in R4 per spec)
 
-**Commit hash:** (pending)
+**Commit hash:** 7bfb529
 
 ---
 
 ### Phase R5 — Violation Detail View and Live Feed
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-02
+**Date Completed:** 2026-06-02
 
 **Acceptance Criteria Results:**
-- [ ] Clicking row opens detail panel with correct data
-- [ ] Score breakdown shows correct L, I, and product
-- [ ] Recommended action matches severity tier exactly
-- [ ] Log excerpt matches raw line in database
-- [ ] Live feed shows new violations within 5 seconds
-- [ ] Live feed does not duplicate entries
-- [ ] Pause button works correctly
-- [ ] Export button copies summary to clipboard
-- [ ] All 121 original tests passing
+- [x] Clicking row opens detail panel with correct data — PASS (ViolationsTable._on_row_clicked opens DetailPanel(violation_id).exec(); all fields populated from get_violation_by_id())
+- [x] Score breakdown shows correct L, I, and product — PASS ("Breakdown: Likelihood N x Impact N = N" label in detail panel)
+- [x] Recommended action matches severity tier exactly — PASS (uses RECOMMENDED_ACTIONS map from data_access.py; exact strings per spec)
+- [x] Log excerpt matches raw line in database — PASS (get_violation_by_id() LEFT JOINs events via triggering_event_id; smoke test: 70/70 events have raw_log, 13/13 violations have triggering_event_id)
+- [x] Live feed shows new violations within 5 seconds — PASS (QTimer at 3000ms; new violations appear on next poll after being written to DB)
+- [x] Live feed does not duplicate entries — PASS (last_seen_id watermark updated before rendering; WHERE v.id > ? guarantees no duplicates)
+- [x] Pause button stops new entries appearing; unpause resumes — PASS (_poll() returns immediately when _paused=True; last_seen_id does not advance while paused; unpausing picks up all missed violations on next tick)
+- [x] Export button copies formatted violation summary to clipboard — PASS (QApplication.clipboard().setText() with 9-field formatted report)
+- [x] All 121 original tests passing — PASS (146/146 all green after schema changes and pipeline wiring)
 
 **What was built:**
 
-**What didn't work and how it was fixed:**
+Schema and storage layer (done first, tested in isolation):
+- `src/storage/db.py`: added `raw_log TEXT` to events table; added `triggering_event_id INTEGER` to violations table
+- `src/ingestion/preprocessor.py`: added `"raw_log": parsed.get("raw")` to both auth and web event dicts in normalize_event(); parser already exposes `"raw"` key
+- `src/storage/writer.py`: insert_events() adds raw_log as 9th column (e.get("raw_log") → NULL when absent); insert_violation() adds triggering_event_id as 8th column; new find_triggering_event_id(violation, db_path) helper does MAX(id) lookup per violation type — placed here so both main.py and ingest_endpoint.py share one implementation
+- `migrate_db.py`: expanded to handle 5 migrations in one run (3 from R1 already-present + 2 new R5 columns); idempotent via PRAGMA table_info checks
 
-**Deviations from REWORK_PHASES.md (if any):**
+Pipeline wiring:
+- `main.py`: imports find_triggering_event_id; calls v["triggering_event_id"] = find_triggering_event_id(v, db_path) for each scored violation before insert_violation()
+- `server/ingest_endpoint.py`: same pattern — sets source_host then triggering_event_id then calls insert_violation()
+
+GUI:
+- `src/gui/data_access.py`: get_violation_by_id() updated with LEFT JOIN events ON e.id = v.triggering_event_id to include raw_log; added get_new_violations_since(last_id) returning lightweight dicts ordered by id ASC
+- `src/gui/detail_panel.py`: DetailPanel(QDialog) — severity-coloured header, score/breakdown, info grid, QTextEdit log excerpt (or "Not available" when NULL), recommended action with blue left-border styling, clipboard export button
+- `src/gui/live_feed.py`: LiveFeedPanel(QWidget) — initialises last_seen_id to current DB max at creation; 3s QTimer polls get_new_violations_since(); inserts _FeedEntry cards at layout position 0 (ascending id order, newest ends up on top); QPropertyAnimation opacity 0→1 fade-in (350ms); 100-entry cap enforced on each poll; Pause toggle (last_seen_id frozen while paused, resumes catching up on unpause); Clear resets display and advances watermark
+- `src/gui/violations_table.py`: _on_row_clicked now opens DetailPanel(violation_id, parent=self).exec()
+- `src/gui/main_window.py`: Live Feed placeholder replaced by LiveFeedPanel; version stamp → "v2.0 — R5"
+
+**What didn't work and how it was fixed:**
+- Smoke test print used Unicode arrow (→) which caused UnicodeEncodeError on Windows cp1252 console — cosmetic only, not a code issue. The data (70/70 events with raw_log, 13/13 violations with triggering_event_id) was confirmed before the error.
+
+**Deviations from REWORK_PHASES.md:**
+- find_triggering_event_id() placed in src/storage/writer.py (not main.py) per explicit instruction — avoids duplicating the function across main.py and ingest_endpoint.py.
+- Schema changes (db.py, writer.py, preprocessor.py, migrate_db.py, main.py, ingest_endpoint.py) are not listed in R5's "files modified" section in REWORK_PHASES.md but are necessary to fulfil "Log excerpt shown in detail panel matches the raw line in the database."
+
+**Test count at end of phase:** 146 passing (no new tests in R5 per spec; schema changes were verified to keep all existing tests passing)
+
+**Commit hash:** (pending)
 
 **Test count at end of phase:**
 
