@@ -1,5 +1,7 @@
 import argparse
 import sqlite3
+import threading
+import time
 import yaml
 
 from src.ingestion.preprocessor import preprocess_log_file
@@ -65,6 +67,35 @@ def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
     return {"events": events, "scored": scored, "summary": summary}
 
 
+def _start_ingest_server(config: dict) -> None:
+    """Start the ingest endpoint on a daemon thread (network mode only).
+
+    Uses a completely separate Flask app instance so it survives independently
+    when the dashboard is replaced by PyQt6 in R3.
+    """
+    from server.ingest_endpoint import ingest_app
+
+    ingest_host = config["server"]["host"]
+    ingest_port = config["server"]["port"]
+
+    t = threading.Thread(
+        target=lambda: ingest_app.run(
+            host=ingest_host,
+            port=ingest_port,
+            debug=False,
+            use_reloader=False,
+            threaded=True,
+        ),
+        daemon=True,
+        name="ingest-endpoint",
+    )
+    t.start()
+    print(f"\nIngest endpoint -> http://{ingest_host}:{ingest_port}/ingest")
+
+    # Give the ingest server time to bind its socket before the dashboard starts.
+    time.sleep(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cybermon — security log analysis pipeline")
     parser.add_argument("--auth-log", default="logs/samples/auth.log",
@@ -77,9 +108,15 @@ def main():
 
     # 1. Load config
     config = yaml.safe_load(open("config/config.yaml"))
+    mode = config.get("mode", "standalone")
 
     run_pipeline(args.auth_log, args.web_log, config)
 
+    # Network mode: start ingest endpoint on a background daemon thread first.
+    if mode == "network":
+        _start_ingest_server(config)
+
+    # Dashboard (both modes)
     host = config["dashboard"]["host"]
     port = config["dashboard"]["port"]
 

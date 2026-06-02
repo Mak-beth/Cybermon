@@ -115,7 +115,7 @@ Parse rate is measured as structural match (line recognised as a valid log entry
 
 **Test count at end of phase:** 126 passing
 
-**Commit hash:** (pending)
+**Commit hash:** 8d334c8
 
 ---
 
@@ -171,36 +171,58 @@ Neither can be resolved within R0's allowed file changes (src/ingestion/ only; c
 
 **Test count at end of phase:** 126 passing
 
-**Commit hash:** (pending)
+**Commit hash:** 2acdf0e
 
 ---
 
 ### Phase R2 — Agent and Ingest Endpoint
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-01
+**Date Completed:** 2026-06-01
 
 **Acceptance Criteria Results:**
-- [ ] Agent tails file and POSTs new lines locally
-- [ ] Ingest endpoint receives POST and runs pipeline
-- [ ] Violations from agent POST have correct source_host in database
-- [ ] Ingest endpoint returns HTTP 400 on malformed body
-- [ ] Agent retries 3 times on connection failure
-- [ ] All new tests passing
-- [ ] All 121 original tests passing
-- [ ] mode: standalone leaves original behaviour unchanged
+- [x] Agent tails a file and POSTs new lines locally — PASS (test_agent_picks_up_new_lines_from_file; functional end-to-end confirmed)
+- [x] Ingest endpoint receives POST and runs pipeline — PASS (test_pipeline_end_to_end_post_to_stored_violation)
+- [x] Violations from agent POST have correct source_host in database — PASS (test_source_host_stored_from_post_body: "remote-machine-X" written to violations table)
+- [x] Ingest endpoint returns HTTP 400 on malformed body — PASS (5 separate 400 tests: missing host, missing lines, not JSON, empty body, lines not a list)
+- [x] Agent retries 3 times on connection failure — PASS (test_retry_fires_on_connection_error: mock called exactly 3 times)
+- [x] All new tests passing — PASS (20 new tests: 8 agent, 12 endpoint)
+- [x] All 121 original tests passing — PASS (126 original tests all passing)
+- [x] mode: standalone leaves original behaviour unchanged — PASS (all integration and live tests pass; ingest server not started in standalone mode)
 
-**Simulated network test result:**
+**Simulated network test result:** Covered by automated tests. Manual two-terminal test (python main.py with mode:network + python agent_main.py) is available for UAT in R8.
 
 **What was built:**
 
+Part A — Agent:
+- `src/agent/__init__.py`: package marker
+- `src/agent/agent.py`: CyberMonAgent class — seeks to end of file on open, drains all available lines in each poll cycle, POSTs batches as `{"host": host_id, "lines": [...]}`, retries up to retry_attempts times with retry_delay_seconds between attempts, handles missing log file gracefully
+- `agent_main.py`: entry point; reads/creates agent_config.yaml; sets up file+stdout logging to agent.log; graceful KeyboardInterrupt shutdown
+
+Part B — Ingest Endpoint:
+- `server/__init__.py`: package marker
+- `server/ingest_endpoint.py`: fresh Flask(__name__) app (separate from dashboard); POST /ingest route; validates JSON body; runs each line through parser → normalize_event → detection → scoring → storage; sets source_host from POST body host field; returns {"received": N, "violations_detected": M}; returns 400 for any validation failure
+- `main.py`: added _start_ingest_server() — starts ingest_app on a daemon thread on port 5001, then sleeps 1 second before dashboard starts; only called when config["mode"] == "network"
+
+Part C — Config:
+- `config/config.yaml`: added mode, server, and agent blocks; added /var/www/html to restricted_resources (R0 Decision Log commitment)
+- `requirements.txt`: added requests
+- `.gitignore`: added agent_config.yaml and agent.log
+
+Part D — Tests:
+- `tests/test_agent.py`: 8 tests covering JSON structure, URL, return value, retry on ConnectionError, retry on non-200, success on second attempt, missing file handling, real file tail
+- `tests/test_ingest_endpoint.py`: 12 tests covering empty lines, unparseable lines, received count, all 5 malformed-body variants, source_host in violations table, source_host in events table, full SSH end-to-end, web log end-to-end
+
 **What didn't work and how it was fixed:**
+- `requests` not installed in venv — requirements.txt was updated but pip install was needed. Ran `pip install requests`.
 
-**Deviations from REWORK_PHASES.md (if any):**
+**Deviations from REWORK_PHASES.md:**
+- Ingest endpoint uses a fresh `Flask(__name__)` instance (not a Blueprint registered on an existing app), per explicit user instruction. This is strictly better: the ingest server is fully independent and survives when the dashboard is replaced in R3.
+- `_load_config()` is called per-request inside the handler (not at module load time) to support test isolation via `unittest.mock.patch`.
 
-**Test count at end of phase:**
+**Test count at end of phase:** 146 passing (126 original + 20 new)
 
-**Commit hash:**
+**Commit hash:** (pending)
 
 ---
 

@@ -1,22 +1,39 @@
+mode: standalone          # standalone | network
+
+server:
+  host: 0.0.0.0
+  port: 5001              # ingest endpoint port (separate from dashboard port 5000)
+
+agent:
+  server_ip: 127.0.0.1
+  server_port: 5001
+  log_path: logs/auth.log
+  host_id: agent-machine-1
+  retry_attempts: 3
+  retry_delay_seconds: 2
+
 detection:
   failed_logins:
     threshold: 2
     time_window_minutes: 10
   unauthorized_access:
-    restricted_resources: ["/admin", "/wp-admin", "/phpmyadmin", "/config", "/.env"]
+    restricted_resources: ["/admin", "/wp-admin", "/phpmyadmin", "/config", "/.env", "/var/www/html"]
     trigger_codes: [403, 401]
   off_hours_logins:
     business_days: [0, 1, 2, 3, 4]
     business_hours_start: "08:00"
     business_hours_end: "18:00"
+
 scoring:
   severity_tiers:
     low:      { min: 1,  max: 4  }
     medium:   { min: 5,  max: 9  }
     high:     { min: 10, max: 16 }
     critical: { min: 17, max: 25 }
+
 storage:
   db_path: "data/cybermon.db"
+
 dashboard:
   host: "127.0.0.1"
   port: 5000

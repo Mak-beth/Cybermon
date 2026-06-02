@@ -1,0 +1,219 @@
+"""Tests for the ingest endpoint (server/ingest_endpoint.py)."""
+import os
+import sqlite3
+from unittest.mock import patch
+
+import pytest
+import yaml
+
+from server.ingest_endpoint import ingest_app
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def config():
+    with open("config/config.yaml", encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
+
+
+@pytest.fixture
+def client():
+    """Basic test client using the real project database."""
+    ingest_app.config["TESTING"] = True
+    with ingest_app.test_client() as c:
+        yield c
+
+
+@pytest.fixture
+def isolated_client(tmp_path, config):
+    """Test client with a fresh temp database so tests don't pollute data/cybermon.db."""
+    db_path = str(tmp_path / "ingest_test.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            yield c, db_path
+
+
+# ---------------------------------------------------------------------------
+# Valid POST — basic response shape
+# ---------------------------------------------------------------------------
+
+def test_empty_lines_returns_200(isolated_client):
+    client, _ = isolated_client
+    resp = client.post("/ingest", json={"host": "agent-1", "lines": []})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["received"] == 0
+    assert data["violations_detected"] == 0
+
+
+def test_unparseable_lines_returns_200(isolated_client):
+    """Lines that don't match any log format are silently skipped; 200 is still returned."""
+    client, _ = isolated_client
+    resp = client.post("/ingest", json={"host": "agent-1", "lines": ["garbage line"]})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "received" in data
+    assert "violations_detected" in data
+
+
+def test_received_count_matches_lines_sent(isolated_client):
+    client, _ = isolated_client
+    lines = ["garbage line 1", "garbage line 2", "garbage line 3"]
+    resp = client.post("/ingest", json={"host": "agent-1", "lines": lines})
+    assert resp.status_code == 200
+    assert resp.get_json()["received"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Malformed requests — HTTP 400
+# ---------------------------------------------------------------------------
+
+def test_missing_host_returns_400(client):
+    resp = client.post("/ingest", json={"lines": ["some line"]})
+    assert resp.status_code == 400
+
+
+def test_missing_lines_returns_400(client):
+    resp = client.post("/ingest", json={"host": "agent-1"})
+    assert resp.status_code == 400
+
+
+def test_not_json_returns_400(client):
+    resp = client.post("/ingest", data="not json", content_type="text/plain")
+    assert resp.status_code == 400
+
+
+def test_empty_body_returns_400(client):
+    resp = client.post("/ingest")
+    assert resp.status_code == 400
+
+
+def test_lines_not_a_list_returns_400(client):
+    resp = client.post("/ingest", json={"host": "agent-1", "lines": "not a list"})
+    assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# source_host written correctly from POST body
+# ---------------------------------------------------------------------------
+
+def test_source_host_stored_from_post_body(tmp_path, config):
+    """Violations created via POST carry the host ID from the request body."""
+    db_path = str(tmp_path / "host_test.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    # Brute-force: 10 failed SSH logins in the same minute → triggers failed_logins
+    lines = [
+        f"May 28 10:00:{i:02d} server sshd[1234]: "
+        f"Failed password for bruteman from 10.0.0.1 port 22 ssh2"
+        for i in range(10)
+    ]
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            resp = c.post("/ingest", json={"host": "remote-machine-X", "lines": lines})
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["violations_detected"] >= 1
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT source_host FROM violations")
+    hosts = {r[0] for r in cur.fetchall()}
+    conn.close()
+
+    assert "remote-machine-X" in hosts
+
+
+def test_events_source_host_matches_post_body(tmp_path, config):
+    """Events stored by the ingest endpoint also carry the agent host ID."""
+    db_path = str(tmp_path / "events_host_test.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    lines = [
+        "May 28 10:00:01 server sshd[1234]: Failed password for alice from 1.2.3.4 port 22 ssh2"
+    ]
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            c.post("/ingest", json={"host": "agent-box-7", "lines": lines})
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT source_host FROM events")
+    hosts = {r[0] for r in cur.fetchall()}
+    conn.close()
+
+    assert "agent-box-7" in hosts
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: POST → pipeline → stored violation
+# ---------------------------------------------------------------------------
+
+def test_pipeline_end_to_end_post_to_stored_violation(tmp_path, config):
+    """Full pipeline: SSH brute-force lines arrive via POST, violation stored in DB."""
+    db_path = str(tmp_path / "e2e.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    lines = [
+        f"May 28 10:00:{i:02d} server sshd[1234]: "
+        f"Failed password for hacker from 9.9.9.9 port 22 ssh2"
+        for i in range(10)
+    ]
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            resp = c.post("/ingest", json={"host": "attacker-target", "lines": lines})
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["received"] == 10
+    assert body["violations_detected"] >= 1
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM events")
+    event_count = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM violations")
+    violation_count = cur.fetchone()[0]
+    conn.close()
+
+    assert event_count == 10
+    assert violation_count >= 1
+
+
+def test_pipeline_web_line_end_to_end(tmp_path, config):
+    """Apache access log lines sent via POST are parsed and stored."""
+    db_path = str(tmp_path / "web_e2e.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    lines = [
+        '10.0.0.50 - - [28/May/2026:10:00:01 +0000] "GET /admin HTTP/1.1" 403 512 "-" "curl/7.0"',
+    ]
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            resp = c.post("/ingest", json={"host": "web-agent", "lines": lines})
+
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["received"] == 1
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM events")
+    count = cur.fetchone()[0]
+    conn.close()
+    assert count == 1
