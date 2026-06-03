@@ -6,12 +6,24 @@ config/config.yaml.  They never modify data.
 """
 import os
 import sqlite3
+import sys
 
 import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR = os.path.abspath(os.path.join(_HERE, "..", ".."))
 _db_path: str | None = None   # cached on first call to _get_db_path()
+
+
+def _get_config_path() -> str:
+    """Return the path to the writable config.yaml.
+
+    In a PyInstaller onefile build this lives next to the .exe.
+    In development it is in the project root.
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(os.path.dirname(sys.executable), "config", "config.yaml")
+    return os.path.join(_BASE_DIR, "config", "config.yaml")
 
 # ---------------------------------------------------------------------------
 # Recommended actions (mirrors dashboard RECOMMENDED_RESPONSE)
@@ -31,11 +43,16 @@ RECOMMENDED_ACTIONS: dict[str, str] = {
 def _get_db_path() -> str:
     global _db_path
     if _db_path is None:
-        config_path = os.path.join(_BASE_DIR, "config", "config.yaml")
-        with open(config_path, encoding="utf-8") as fh:
+        with open(_get_config_path(), encoding="utf-8") as fh:
             config = yaml.safe_load(fh)
         raw = config["storage"]["db_path"]
-        _db_path = raw if os.path.isabs(raw) else os.path.join(_BASE_DIR, raw)
+        if os.path.isabs(raw):
+            _db_path = raw
+        elif hasattr(sys, "_MEIPASS"):
+            # Resolve relative path next to the exe, not in the temp extraction dir
+            _db_path = os.path.join(os.path.dirname(sys.executable), raw)
+        else:
+            _db_path = os.path.join(_BASE_DIR, raw)
     return _db_path
 
 

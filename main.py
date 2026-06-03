@@ -1,14 +1,47 @@
 import argparse
 import logging
 import os
+import shutil
 import sqlite3
 import sys
 import threading
 import time
 import yaml
 
+# ---------------------------------------------------------------------------
+# Path helpers — must be defined before anything that uses them (incl. logging)
+# ---------------------------------------------------------------------------
+
+def _resource_path(relative: str) -> str:
+    """Absolute path to a READ-ONLY bundled resource.
+
+    In a PyInstaller onefile build, sys._MEIPASS is the temp extraction
+    directory where frozen data files are unpacked.
+    In development it is the project root.
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative)
+
+
+def _data_path(relative: str) -> str:
+    """Absolute path to a WRITABLE runtime file (config, database, logs).
+
+    In a PyInstaller onefile build these files live NEXT TO the .exe
+    (sys.executable), not inside the temp extraction dir.
+    In development it is the project root.
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(os.path.dirname(sys.executable), relative)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative)
+
+
+# ---------------------------------------------------------------------------
+# Logging — file next to the exe in production, project root in development
+# ---------------------------------------------------------------------------
+
 logging.basicConfig(
-    filename="cybermon.log",
+    filename=_data_path("cybermon.log"),
     level=logging.ERROR,
     format="%(asctime)s %(levelname)s %(message)s",
 )
@@ -41,36 +74,29 @@ def _clear_tables(db_path: str) -> None:
 def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
     db_path = config["storage"]["db_path"]
 
-    # 2. Init DB
     init_db(db_path)
     _clear_tables(db_path)
 
-    # 3. Ingest
     print("[ 1/5 ] Ingesting logs...")
     events = (preprocess_log_file(auth_log, "auth") +
               preprocess_log_file(web_log, "web"))
     print(f"        {len(events)} events parsed")
 
-    # 4. Store events
     insert_events(events, db_path)
 
-    # 5. Detect
     print("[ 2/5 ] Running detection...")
     violations = run_detection(events, config)
     print(f"        {len(violations)} violations detected")
 
-    # 6. Score
     print("[ 3/5 ] Scoring violations...")
     scored = score_all_violations(violations, config)
 
-    # 7. Store violations and scores
     print("[ 4/5 ] Storing results...")
     for v in scored:
         v["triggering_event_id"] = find_triggering_event_id(v, db_path)
         vid = insert_violation(v, db_path)
         insert_risk_score(vid, v, db_path)
 
-    # 8. Print summary
     summary = get_summary_counts(db_path)
     print("[ 5/5 ] Done.\n")
     print("=== Cybermon Summary ===")
@@ -83,11 +109,7 @@ def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
 
 
 def _start_ingest_server(config: dict) -> None:
-    """Start the ingest endpoint on a daemon thread (network mode only).
-
-    Uses a completely separate Flask app instance so it survives independently
-    when the dashboard is replaced by PyQt6 in R3.
-    """
+    """Start the ingest endpoint on a daemon thread (network mode only)."""
     from server.ingest_endpoint import ingest_app
 
     ingest_host = config["server"]["host"]
@@ -106,8 +128,6 @@ def _start_ingest_server(config: dict) -> None:
     )
     t.start()
     print(f"\nIngest endpoint -> http://{ingest_host}:{ingest_port}/ingest")
-
-    # Give the ingest server time to bind its socket before the Qt window starts.
     time.sleep(1)
 
 
@@ -121,45 +141,57 @@ def _is_first_run(config_path: str) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cybermon — security log analysis pipeline")
-    # Defaults are None so that config values from the wizard take precedence;
-    # explicit CLI args still override (used by tests and manual runs).
-    parser.add_argument("--auth-log", default=None,
-                        help="Path to Linux auth log file")
-    parser.add_argument("--web-log", default=None,
-                        help="Path to Apache access log file")
+    parser = argparse.ArgumentParser(description="Cybermon - security log analysis pipeline")
+    parser.add_argument("--auth-log", default=None, help="Path to Linux auth log file")
+    parser.add_argument("--web-log",  default=None, help="Path to Apache access log file")
     args = parser.parse_args()
 
-    config_path = "config/config.yaml"
+    # 1. Resolve writable config path (next to exe in production).
+    config_path = _data_path("config/config.yaml")
 
-    # 1. Load config — handle missing file on a fresh install
+    # 2. Bootstrap: copy bundled factory-default config on a clean install.
+    if not os.path.exists(config_path):
+        default_src = _resource_path("config/config_default.yaml")
+        if os.path.exists(default_src):
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            shutil.copy2(default_src, config_path)
+
+    # 3. Load config.
     if os.path.exists(config_path):
         config = yaml.safe_load(open(config_path)) or {}
     else:
         config = {}
 
-    # 2. Qt imports are inside main() so `from main import run_pipeline`
-    #    in tests never triggers Qt at import time.
+    # 4. Resolve db_path to absolute so SQLite always finds it regardless of CWD.
+    raw_db = config.get("storage", {}).get("db_path", "data/cybermon.db")
+    if not os.path.isabs(raw_db):
+        config.setdefault("storage", {})["db_path"] = _data_path(raw_db)
+    # Ensure the data directory exists.
+    os.makedirs(os.path.dirname(config["storage"]["db_path"]), exist_ok=True)
+
+    # 5. Qt imports inside main() so `from main import run_pipeline` in tests
+    #    never triggers Qt at import time.
     from PyQt6.QtWidgets import QApplication, QDialog
     app = QApplication(sys.argv)
 
-    # 3. First-run: show setup wizard before anything else.
+    # 6. First-run: show setup wizard before anything else.
     if _is_first_run(config_path):
         from src.gui.wizard import SetupWizard
         wizard = SetupWizard(config, config_path=config_path)
         if wizard.exec() != QDialog.DialogCode.Accepted:
             sys.exit(0)
-        # Reload config — the wizard just wrote it.
         config = yaml.safe_load(open(config_path)) or {}
+        raw_db = config.get("storage", {}).get("db_path", "data/cybermon.db")
+        if not os.path.isabs(raw_db):
+            config.setdefault("storage", {})["db_path"] = _data_path(raw_db)
 
     mode = config.get("mode", "standalone")
 
-    # 4. Determine log paths: CLI args override config; config overrides built-in defaults.
-    auth_log = args.auth_log or config.get("auth_log_path", "logs/samples/auth.log")
-    web_log  = args.web_log  or config.get("web_log_path",  "logs/samples/access.log")
+    # 7. Determine log paths.
+    auth_log = args.auth_log or config.get("auth_log_path", _data_path("logs/samples/auth.log"))
+    web_log  = args.web_log  or config.get("web_log_path",  _data_path("logs/samples/access.log"))
 
-    # 5. Run ingestion + detection + scoring pipeline.
-    #    Catch exceptions so a bad log file never prevents the GUI from opening.
+    # 8. Run pipeline (errors are shown in the GUI, never crash the app).
     pipeline_error: str | None = None
     try:
         run_pipeline(auth_log, web_log, config)
@@ -167,13 +199,10 @@ def main():
         logging.exception("Pipeline error during startup")
         pipeline_error = str(exc)
 
-    # 6. Start continuous live monitoring — tails log files on daemon threads.
-    #    New violations are written to the DB as they arrive; the Live Feed,
-    #    Overview, and Violations panels pick them up via their normal poll/refresh cycles.
+    # 9. Start continuous live monitoring.
     from src.ingestion.watcher import LogWatcher
 
     def _live_callback(scored_violation: dict, db_path: str) -> None:
-        """Called by LogWatcher for each new violation detected from a new log line."""
         try:
             scored_violation["triggering_event_id"] = find_triggering_event_id(
                 scored_violation, db_path
@@ -190,19 +219,17 @@ def main():
         web_log=web_log,
         on_violation=lambda v: _live_callback(v, db_path),
     )
-    # watcher threads are daemon threads — stop automatically when the app exits
 
-    # 7. Network mode: start ingest endpoint on a background daemon thread.
+    # 10. Network mode: ingest endpoint on a daemon thread.
     if mode == "network":
         _start_ingest_server(config)
 
-    # 8. Launch the PyQt6 desktop window.
+    # 11. Launch desktop window.
     from src.gui.main_window import MainWindow
 
     window = MainWindow(config)
     window.show()
 
-    # 9. Surface any pipeline error in the app rather than a crash dialog.
     if pipeline_error:
         window.show_error_banner(pipeline_error)
 
