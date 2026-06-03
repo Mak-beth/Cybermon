@@ -4,7 +4,9 @@ These tests target the two pure-IO functions exported by src.gui.wizard:
     is_first_run(config_path)
     write_wizard_config(settings, config_path)
 
-No QApplication is required — Qt widget classes are never imported here.
+No QApplication is required.  SetupWizard is a deferred factory function;
+importing it does not touch PyQt6.  This file imports only the two pure
+helpers, so no Qt installation is needed to run the suite.
 """
 import os
 

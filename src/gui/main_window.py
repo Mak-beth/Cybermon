@@ -1,9 +1,11 @@
 """CyberMon main application window.
 
-Builds the outer shell: sidebar navigation + QStackedWidget content area.
-All other GUI panels (violations table, overview, live feed, etc.) are loaded
-into the stack and swapped by clicking the sidebar items.
+Builds the outer shell: warning banner (optional) + sidebar navigation +
+QStackedWidget content area.  All other GUI panels are loaded into the stack
+and swapped by clicking sidebar items.
 """
+import os
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PyQt6.QtWidgets import (
@@ -22,10 +24,10 @@ from PyQt6.QtWidgets import (
 # ---------------------------------------------------------------------------
 # Palette constants
 # ---------------------------------------------------------------------------
-_SIDEBAR_BG      = "#1e1e2e"
-_SIDEBAR_TEXT    = "#e2e8f0"
-_ACCENT_PURPLE   = "#7c3aed"
-_CONTENT_BG      = "#f8f9fa"
+_SIDEBAR_BG    = "#1e1e2e"
+_SIDEBAR_TEXT  = "#e2e8f0"
+_ACCENT_PURPLE = "#7c3aed"
+_CONTENT_BG    = "#f8f9fa"
 
 # Sidebar item order matches QStackedWidget index
 _NAV_ITEMS = [
@@ -57,7 +59,6 @@ def _make_shield_icon() -> QIcon:
     path.lineTo(2, 7)
     path.closeSubpath()
     p.drawPath(path)
-    # Small white lock body
     p.setBrush(QColor("#ffffff"))
     p.drawRoundedRect(11, 16, 10, 8, 2, 2)
     p.end()
@@ -65,30 +66,10 @@ def _make_shield_icon() -> QIcon:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder panel for panels not yet built
-# ---------------------------------------------------------------------------
-
-class _PlaceholderPanel(QWidget):
-    def __init__(self, message: str, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel(message)
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl.setStyleSheet("color: #6b7280; font-size: 15px;")
-        layout.addWidget(lbl)
-
-
-# ---------------------------------------------------------------------------
 # Sidebar button
 # ---------------------------------------------------------------------------
 
 class _SidebarButton(QPushButton):
-    """Flat checkable button styled to match the sidebar design.
-
-    When checked, a 4 px purple left border is drawn via stylesheet.
-    """
-
     _STYLE_BASE = f"""
         QPushButton {{
             border: none;
@@ -124,13 +105,14 @@ class _SidebarButton(QPushButton):
 # ---------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    """Outer shell: sidebar + stacked content area."""
+    """Outer shell: optional warning banner + sidebar + stacked content area."""
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self._config = config
         self._setup_window()
         self._build_ui()
+        self._check_warnings(config)
         self._switch_to(0)   # default to Overview panel
 
     # ------------------------------------------------------------------
@@ -138,11 +120,10 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _setup_window(self) -> None:
-        self.setWindowTitle("CyberMon — Security Monitoring")
+        self.setWindowTitle("CyberMon - Security Monitoring")
         self.setWindowIcon(_make_shield_icon())
         self.setMinimumSize(1200, 750)
         self.resize(1280, 780)
-        # No menu bar, no toolbar — just the central widget
         self.menuBar().setVisible(False)
 
     # ------------------------------------------------------------------
@@ -153,12 +134,80 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
-        root_layout = QHBoxLayout(central)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        root_layout.addWidget(self._build_sidebar())
-        root_layout.addWidget(self._build_content_area())
+        # Warning banner sits above everything; hidden until needed
+        self._warning_banner = self._build_warning_banner()
+        outer.addWidget(self._warning_banner)
+
+        # Sidebar + content row
+        content_row = QHBoxLayout()
+        content_row.setContentsMargins(0, 0, 0, 0)
+        content_row.setSpacing(0)
+        content_row.addWidget(self._build_sidebar())
+        content_row.addWidget(self._build_content_area())
+        outer.addLayout(content_row)
+
+    def _build_warning_banner(self) -> QFrame:
+        """Amber banner that appears when log files are missing or a pipeline error occurs."""
+        banner = QFrame()
+        banner.setObjectName("warning_banner")
+        banner.setStyleSheet("""
+            QFrame#warning_banner {
+                background: #fef3c7;
+                border-bottom: 1px solid #f59e0b;
+            }
+        """)
+        banner.setFixedHeight(38)
+
+        row = QHBoxLayout(banner)
+        row.setContentsMargins(12, 0, 8, 0)
+        row.setSpacing(8)
+
+        icon_lbl = QLabel("!")
+        icon_lbl.setStyleSheet(
+            "color: #d97706; font-size: 16px; font-weight: bold; background: transparent;"
+        )
+        icon_lbl.setFixedWidth(16)
+        row.addWidget(icon_lbl)
+
+        self._banner_text = QLabel("")
+        self._banner_text.setStyleSheet(
+            "color: #92400e; font-size: 13px; background: transparent;"
+        )
+        row.addWidget(self._banner_text, stretch=1)
+
+        settings_link = QPushButton("Check your settings")
+        settings_link.setFlat(True)
+        settings_link.setStyleSheet("""
+            QPushButton {
+                color: #7c3aed;
+                font-size: 13px;
+                text-decoration: underline;
+                border: none;
+                background: transparent;
+                padding: 0 4px;
+            }
+            QPushButton:hover { color: #6d28d9; }
+        """)
+        settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
+        settings_link.clicked.connect(lambda: self._switch_to(4))
+        row.addWidget(settings_link)
+
+        dismiss_btn = QPushButton("x")
+        dismiss_btn.setFlat(True)
+        dismiss_btn.setFixedWidth(24)
+        dismiss_btn.setFixedHeight(24)
+        dismiss_btn.setStyleSheet(
+            "color: #92400e; border: none; background: transparent; font-size: 14px;"
+        )
+        dismiss_btn.clicked.connect(lambda: banner.setVisible(False))
+        row.addWidget(dismiss_btn)
+
+        banner.setVisible(False)
+        return banner
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
@@ -169,7 +218,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # App title at the top of the sidebar
         title = QLabel("CyberMon")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFixedHeight(56)
@@ -179,14 +227,12 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(title)
 
-        # Divider
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
         divider.setStyleSheet("color: #3d3d5c;")
         divider.setFixedHeight(1)
         layout.addWidget(divider)
 
-        # Nav buttons (mutually exclusive via QButtonGroup)
         self._btn_group = QButtonGroup(self)
         self._btn_group.setExclusive(True)
         self._nav_buttons: list[_SidebarButton] = []
@@ -196,16 +242,29 @@ class MainWindow(QMainWindow):
             self._btn_group.addButton(btn, idx)
             layout.addWidget(btn)
             self._nav_buttons.append(btn)
-            # Capture idx in lambda default arg to avoid closure capture bug
             btn.clicked.connect(lambda checked, i=idx: self._switch_to(i))
+
+        # Agent connection indicator — only shown in network mode
+        if self._config.get("mode") == "network":
+            layout.addSpacing(8)
+            agent_indicator = QLabel("  No agents connected")
+            agent_indicator.setStyleSheet(
+                f"color: #ef4444; font-size: 11px; padding: 4px 12px;"
+                f" background: {_SIDEBAR_BG};"
+            )
+            agent_indicator.setToolTip(
+                "No agents connected. Check agent configuration."
+            )
+            layout.addWidget(agent_indicator)
 
         layout.addStretch()
 
-        # Version stamp at bottom
-        ver = QLabel("v2.0 — R6")
+        ver = QLabel("v2.0")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver.setFixedHeight(32)
-        ver.setStyleSheet(f"color: #4a4a6a; font-size: 11px; background: {_SIDEBAR_BG};")
+        ver.setStyleSheet(
+            f"color: #4a4a6a; font-size: 11px; background: {_SIDEBAR_BG};"
+        )
         layout.addWidget(ver)
 
         return sidebar
@@ -214,26 +273,45 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.setStyleSheet(f"background-color: {_CONTENT_BG};")
 
-        # Imports are lazy (inside the method) so importing main_window at the
-        # module level in tests never triggers Qt widget construction.
         from src.gui.overview_panel   import OverviewPanel
         from src.gui.violations_table import ViolationsTable
         from src.gui.live_feed        import LiveFeedPanel
         from src.gui.trend_panel      import TrendPanel
-
-        from src.gui.settings_panel import SettingsPanel
+        from src.gui.settings_panel   import SettingsPanel
 
         panels = [
-            OverviewPanel(self._config,   parent=self),    # 0 Overview
-            ViolationsTable(self._config, parent=self),    # 1 Violations
-            LiveFeedPanel(self._config,   parent=self),    # 2 Live Feed
-            TrendPanel(self._config,      parent=self),    # 3 Trend
-            SettingsPanel(self._config,   parent=self),    # 4 Settings
+            OverviewPanel(self._config,  parent=self),    # 0 Overview
+            ViolationsTable(self._config, parent=self),   # 1 Violations
+            LiveFeedPanel(self._config,  parent=self),    # 2 Live Feed
+            TrendPanel(self._config,     parent=self),    # 3 Trend
+            SettingsPanel(self._config,  parent=self),    # 4 Settings
         ]
         for panel in panels:
             self._stack.addWidget(panel)
 
         return self._stack
+
+    # ------------------------------------------------------------------
+    # Warnings and error notifications
+    # ------------------------------------------------------------------
+
+    def _check_warnings(self, config: dict) -> None:
+        """Show the banner if any configured log file path does not exist."""
+        missing = []
+        for key in ("auth_log_path", "web_log_path"):
+            path = config.get(key)
+            if path and not os.path.exists(path):
+                missing.append(path)
+        if missing:
+            self._banner_text.setText(
+                "Log file not found at " + ", ".join(missing) + "."
+            )
+            self._warning_banner.setVisible(True)
+
+    def show_error_banner(self, msg: str) -> None:
+        """Display a pipeline or startup error in the warning banner."""
+        self._banner_text.setText(f"Error: {msg}  See cybermon.log for details.")
+        self._warning_banner.setVisible(True)
 
     # ------------------------------------------------------------------
     # Navigation

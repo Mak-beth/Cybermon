@@ -79,7 +79,7 @@ class CyberMonAgent:
         this call are delivered.  Handles missing files by retrying quietly.
         """
         self._running = True
-        logger.info("Agent started. Watching %s → %s", self.log_path, self.url)
+        logger.info("Agent started. Watching %s -> %s", self.log_path, self.url)
         print(f"[CyberMonAgent] Watching {self.log_path}")
         print(f"[CyberMonAgent] Posting to {self.url} as host '{self.host_id}'")
 

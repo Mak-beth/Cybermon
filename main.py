@@ -1,10 +1,17 @@
 import argparse
+import logging
 import os
 import sqlite3
 import sys
 import threading
 import time
 import yaml
+
+logging.basicConfig(
+    filename="cybermon.log",
+    level=logging.ERROR,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
 from src.ingestion.preprocessor import preprocess_log_file
 from src.detection.detector import run_detection
@@ -151,8 +158,14 @@ def main():
     auth_log = args.auth_log or config.get("auth_log_path", "logs/samples/auth.log")
     web_log  = args.web_log  or config.get("web_log_path",  "logs/samples/access.log")
 
-    # 5. Run ingestion + detection + scoring pipeline
-    run_pipeline(auth_log, web_log, config)
+    # 5. Run ingestion + detection + scoring pipeline.
+    #    Catch exceptions so a bad log file never prevents the GUI from opening.
+    pipeline_error: str | None = None
+    try:
+        run_pipeline(auth_log, web_log, config)
+    except Exception as exc:
+        logging.exception("Pipeline error during startup")
+        pipeline_error = str(exc)
 
     # 6. Network mode: start ingest endpoint on a background daemon thread.
     if mode == "network":
@@ -163,6 +176,11 @@ def main():
 
     window = MainWindow(config)
     window.show()
+
+    # 8. Surface any pipeline error in the app rather than a crash dialog.
+    if pipeline_error:
+        window.show_error_banner(pipeline_error)
+
     sys.exit(app.exec())
 
 

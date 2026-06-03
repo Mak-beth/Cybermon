@@ -422,27 +422,72 @@ Nothing significant. QWizard ModernStyle renders page titles outside the page wi
 ---
 
 ### Phase R7 — Export, Error Handling, Empty States, Polish
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-03
+**Date Completed:** 2026-06-03
 
 **Acceptance Criteria Results:**
-- [ ] CSV export produces correct file
-- [ ] File save dialog works
-- [ ] Missing log file shows warning banner not crash
-- [ ] Empty database shows friendly empty state
-- [ ] simulate.py produces all four severity tiers
-- [ ] All four tiers visible with correct colours
-- [ ] Old Flask dashboard removed, app starts cleanly
-- [ ] 140+ tests passing
+- [x] CSV export produces correct file — QFileDialog save, 9-column CSV, respects host filter
+- [x] File save dialog appears and respects chosen path — QFileDialog.getSaveFileName used
+- [x] Missing log file shows warning banner not crash — amber banner at top of MainWindow
+- [x] Empty database shows friendly empty state — QStackedWidget in ViolationsTable (index 1)
+- [x] simulate.py produces violations in all four severity tiers — Low(4), Medium(6), High(15), Critical(20)
+- [x] All four tiers visible in violations table with correct colours — severity palette unchanged
+- [x] Old Flask dashboard files removed, app starts cleanly — src/dashboard/ deleted, test_live.py deleted
+- [x] 140+ tests passing — 142 passing
 
 **What was built:**
 
+Part A — CSV export:
+- data_access.py: get_violations_for_export(host_filter) with LEFT JOIN to events for log_excerpt
+- violations_table.py: rewritten — Export CSV button (QFileDialog, 9-column CSV), QStackedWidget
+  content area (table at index 0, empty-state label at index 1), status bar updated on export
+
+Part B — Error handling:
+- main_window.py: rewritten — QVBoxLayout outer wrapper; amber warning banner (QFrame) sits above
+  sidebar+content row; _check_warnings(config) checks auth_log_path and web_log_path on startup;
+  show_error_banner(msg) surfaces pipeline errors without crashing; agent connection indicator
+  (red text label) shown in sidebar in network mode only; version stamp set to "v2.0"
+- main.py: Python logging configured to cybermon.log; run_pipeline wrapped in try/except;
+  pipeline errors passed to window.show_error_banner() after window.show()
+- Overview panel empty state already handled correctly (0 counts, doughnut shows "No data") — no change needed
+
+Part C — Demo data fix:
+- simulate.py: rewritten — writes to logs/samples/ (matches main.py default paths); four patterns:
+  3 failed for guest (Low, score 4), 8 failed for hacker (Medium, score 6),
+  3x /admin 403 (High, score 15), 20 failed for admin (Critical, score 20)
+
+Part D — Remove old Flask dashboard:
+- src/dashboard/ deleted (app.py, __init__.py)
+- tests/test_live.py deleted (8 orphaned Flask SSE tests)
+- tests/test_integration.py: 6 dashboard route tests removed; 7 pipeline tests retained
+- tests/test_r7.py: 6 new tests covering simulate.py tier patterns and config bounds
+
+Part E — Minor fixes:
+- data_access.py: _get_db_path() caches db path on first call (module-level _db_path variable);
+  get_max_violation_id() added (SELECT MAX(id)); get_violations_for_export() added
+- live_feed.py: _fetch_current_max_id() now calls get_max_violation_id() instead of
+  fetching all violations just to read the last id
+- wizard.py: restructured — is_first_run() and write_wizard_config() at module level with no
+  Qt imports; all PyQt6 imports and class definitions deferred inside _build_wizard() factory
+  function; SetupWizard is a module-level factory function (not a class); _wizard_class cached
+  after first call so Qt code is built once only
+- tests/test_wizard.py: docstring corrected to reflect deferred Qt import design
+- src/agent/agent.py: logger.info "→" changed to "->" (Windows cp1252 fix)
+- src/gui/main_window.py: version stamp set to "v2.0" (no phase suffix)
+
 **What didn't work and how it was fixed:**
+- Deleting src/dashboard/ caused test_live.py (8 tests) and 6 tests in test_integration.py to fail;
+  test_live.py deleted, dashboard tests removed from test_integration.py; 6 new scoring/tier tests
+  added in test_r7.py to compensate and stay above 140
 
 **Deviations from REWORK_PHASES.md (if any):**
+- REWORK_PHASES.md says "Files created in this phase: None" but test_r7.py was added to maintain
+  the 140+ test target after the dashboard test removal reduced the count to 136
+- test_live.py removed (not listed in REWORK_PHASES.md as a file to delete) — necessary because it
+  imported src.dashboard.app at module level, causing collection failure
 
-**Test count at end of phase:**
+**Test count at end of phase:** 142 passing (target 140+)
 
 **Commit hash:**
 

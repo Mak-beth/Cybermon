@@ -11,6 +11,7 @@ import yaml
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BASE_DIR = os.path.abspath(os.path.join(_HERE, "..", ".."))
+_db_path: str | None = None   # cached on first call to _get_db_path()
 
 # ---------------------------------------------------------------------------
 # Recommended actions (mirrors dashboard RECOMMENDED_RESPONSE)
@@ -28,11 +29,14 @@ RECOMMENDED_ACTIONS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 def _get_db_path() -> str:
-    config_path = os.path.join(_BASE_DIR, "config", "config.yaml")
-    with open(config_path, encoding="utf-8") as fh:
-        config = yaml.safe_load(fh)
-    raw = config["storage"]["db_path"]
-    return raw if os.path.isabs(raw) else os.path.join(_BASE_DIR, raw)
+    global _db_path
+    if _db_path is None:
+        config_path = os.path.join(_BASE_DIR, "config", "config.yaml")
+        with open(config_path, encoding="utf-8") as fh:
+            config = yaml.safe_load(fh)
+        raw = config["storage"]["db_path"]
+        _db_path = raw if os.path.isabs(raw) else os.path.join(_BASE_DIR, raw)
+    return _db_path
 
 
 def _connect() -> sqlite3.Connection:
@@ -266,6 +270,59 @@ def get_trend_by_hour_today(host_filter: str | None = None) -> dict:
         if vtype in result:
             result[vtype][idx] = row["cnt"]
     return result
+
+
+def get_max_violation_id() -> int:
+    """Return the highest violation id in the database, or 0 if empty."""
+    conn = _connect()
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(id) FROM violations")
+    result = cur.fetchone()[0]
+    conn.close()
+    return result if result is not None else 0
+
+
+def get_violations_for_export(host_filter: str | None = None) -> list[dict]:
+    """Return violations with log_excerpt for CSV export.
+
+    Includes a LEFT JOIN to events for raw_log so the exported CSV has the
+    log line that triggered each violation.  Respects host_filter identically
+    to get_all_violations().
+    """
+    conn = _connect()
+    cur = conn.cursor()
+
+    if host_filter and host_filter != "All Hosts":
+        cur.execute("""
+            SELECT v.timestamp, v.violation_type, v.source_host,
+                   r.likelihood, r.impact, r.risk_score, r.severity,
+                   e.raw_log
+            FROM violations v
+            JOIN risk_scores r ON r.violation_id = v.id
+            LEFT JOIN events e ON e.id = v.triggering_event_id
+            WHERE v.source_host = ?
+            ORDER BY r.risk_score DESC
+        """, (host_filter,))
+    else:
+        cur.execute("""
+            SELECT v.timestamp, v.violation_type, v.source_host,
+                   r.likelihood, r.impact, r.risk_score, r.severity,
+                   e.raw_log
+            FROM violations v
+            JOIN risk_scores r ON r.violation_id = v.id
+            LEFT JOIN events e ON e.id = v.triggering_event_id
+            ORDER BY r.risk_score DESC
+        """)
+
+    rows = []
+    for row in cur.fetchall():
+        d = dict(row)
+        d["recommended_action"] = RECOMMENDED_ACTIONS.get(d["severity"], "")
+        d["log_excerpt"] = d.pop("raw_log") or ""
+        rows.append(d)
+
+    conn.close()
+    return rows
 
 
 def get_trend_by_day_week(host_filter: str | None = None) -> dict:

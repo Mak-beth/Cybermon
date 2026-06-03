@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.gui.data_access import get_new_violations_since
+from src.gui.data_access import get_max_violation_id, get_new_violations_since
 
 # ---------------------------------------------------------------------------
 # Severity colours (shared palette)
@@ -200,8 +200,7 @@ class LiveFeedPanel(QWidget):
     def _fetch_current_max_id(self) -> int:
         """Query the DB for the highest existing violation id."""
         try:
-            recent = get_new_violations_since(0)
-            return recent[-1]["id"] if recent else 0
+            return get_max_violation_id()
         except Exception:
             return 0
 
