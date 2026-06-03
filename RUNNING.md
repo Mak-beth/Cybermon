@@ -1,34 +1,25 @@
-# Running Cybermon
+# Running CyberMon
 
 Step-by-step instructions for getting the project running locally.
-Updated after each phase. Current state: **Upgrades U1–U4 complete**.
+Current state: **Rework phases R0–R7 complete** — native PyQt6 desktop application.
 
 ---
 
-## Quickstart (Windows — live mode)
+## Quickstart (Windows)
 
-Double-click `start.bat` or run it from a terminal:
+Double-click `start.bat`, or run it from a terminal:
 
 ```bat
 start.bat
 ```
 
 This single script:
-1. Creates a virtual environment if one does not exist
+1. Creates a Python virtual environment if one does not exist
 2. Installs all dependencies from `requirements.txt`
-3. Runs the batch pipeline against the sample logs
-4. Starts live monitoring (watches log files for new activity)
-5. Launches the Flask dashboard at `http://127.0.0.1:5000`
+3. Runs the detection pipeline against the sample log files
+4. Opens the CyberMon desktop window
 
----
-
-## Batch mode vs live mode
-
-| Mode | Command | What it does |
-|------|---------|--------------|
-| Batch (default) | `venv\Scripts\python.exe main.py` | Processes sample logs once, then serves the dashboard |
-| Live | `venv\Scripts\python.exe main.py --live` | Batch pipeline first, then watches log files for new lines in real time; new violations appear instantly on `/live` |
-| Custom logs | `... main.py --auth-log path/to/auth.log --web-log path/to/access.log` | Points both modes at your own log files |
+No browser is required. The application is a native Windows desktop window.
 
 ---
 
@@ -38,6 +29,7 @@ This single script:
 - Git
 
 Verify with:
+
 ```
 py --version
 git --version
@@ -71,121 +63,117 @@ Your prompt should now show `(venv)`.
 pip install -r requirements.txt
 ```
 
-Installs: `flask`, `pandas`, `pyyaml`, `pytest`.
+Installs: `PyQt6`, `PyQtGraph`, `flask`, `pandas`, `pyyaml`, `requests`, `pytest`.
 
 ---
 
-## 4. Verify config loads (Phase 0 check)
-
-```bash
-venv\Scripts\python.exe main.py
-```
-
-Expected output:
-
-```
-=== Cybermon Config ===
-Failed login threshold : 5
-Time window (min)      : 10
-...
-Config loaded successfully.
-```
-
----
-
-## 5. Run the test suite (Phases 1–6)
+## 4. Run the test suite
 
 ```bash
 venv\Scripts\pytest.exe tests/ -v
 ```
 
-Expected: **100 tests, all passing** across `test_ingestion.py`, `test_detection.py`, `test_scoring.py`, `test_storage.py`, `test_integration.py`.
+Expected: **142 tests, all passing**.
 
 ---
 
-## 6. Run the full pipeline and launch the dashboard
+## 5. Launch the application
 
 ```bash
 venv\Scripts\python.exe main.py
 ```
 
-This single command:
-1. Ingests the synthetic logs
-2. Detects violations
-3. Scores them
-4. Writes everything to `data/cybermon.db`
-5. Prints a summary
-6. Launches the Flask dashboard on `http://127.0.0.1:5000`
+Or double-click `start.bat`.
 
-Expected output:
+**First run:** A three-screen setup wizard appears before the main window.
+
+| Wizard screen | What to do |
+|---------------|-----------|
+| Mode selection | Choose "Just this computer" (standalone) or "Monitor multiple computers" (network) |
+| Configuration | Set log file paths, business hours, and brute-force threshold |
+| Confirmation | Review settings and click Finish |
+
+After the wizard completes, the main window opens automatically. On all subsequent launches the wizard is skipped.
+
+---
+
+## 6. Application panels
+
+The sidebar on the left switches between five panels:
+
+| Panel | What it shows |
+|-------|--------------|
+| Overview | Total violation count, severity breakdown cards, doughnut chart, per-type progress bars |
+| Violations | Sortable table of all violations, colour-coded severity badges, host filter, Export CSV |
+| Live Feed | Real-time stream of new violations as they are detected (polls every 3 seconds) |
+| Trend | Line charts — violations by hour today and by day over the last 7 days |
+| Settings | Edit log paths, business hours, brute-force threshold; re-run setup wizard |
+
+---
+
+## 7. Generate demo data (all four severity tiers)
+
+Run the simulator to append realistic log lines to the sample files, then relaunch the app:
+
+```bash
+venv\Scripts\python.exe simulate.py
+venv\Scripts\python.exe main.py
 ```
-[ 1/5 ] Ingesting logs...
-        47 events parsed
-[ 2/5 ] Running detection...
-        12 violations detected
-[ 3/5 ] Scoring violations...
-[ 4/5 ] Storing results...
-[ 5/5 ] Done.
 
-=== Cybermon Summary ===
-  Events parsed    : 47
-  Violations found : 12
-  By type          : {'failed_logins': 1, 'unauthorized_access': 10, 'off_hours_login': 1}
-  By severity      : {'Low': 0, 'Medium': 5, 'High': 7, 'Critical': 0}
+The simulator produces violations across all four tiers:
 
-Launching dashboard → http://127.0.0.1:5000
-Press Ctrl+C to stop.
-```
+| Tier | Pattern | Score |
+|------|---------|-------|
+| Low | 3 failed logins for `guest` | 4 |
+| Medium | 8 failed logins for `hacker` | 6 |
+| High | 3 × GET /admin returning 403 | 15 |
+| Critical | 20 failed logins for `admin` | 20 |
 
-You can also point it at custom log files:
+---
+
+## 8. Export violations to CSV
+
+In the Violations panel, set the host filter if needed, then click **Export CSV**. A save dialog opens. The file contains one row per visible violation with columns: `timestamp`, `violation_type`, `source_host`, `likelihood`, `impact`, `risk_score`, `severity`, `recommended_action`, `log_excerpt`.
+
+---
+
+## 9. Network mode (multi-machine monitoring)
+
+1. Run the setup wizard on the server machine and choose "Monitor multiple computers".
+2. On each machine you want to monitor, run `CyberMonAgent.exe` (or `agent_main.py` from source) and point it at the server IP.
+3. The server receives log lines via HTTP POST on port 5001 and processes them through the detection pipeline automatically.
+
+---
+
+## 10. Configuration
+
+All thresholds and settings live in `config/config.yaml`. Changes take effect on the next pipeline run.
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `mode` | `standalone` | `standalone` or `network` |
+| `detection.failed_logins.threshold` | 2 | Minimum failures in window to trigger alert |
+| `detection.failed_logins.time_window_minutes` | 10 | Rolling window size |
+| `detection.off_hours_logins.business_hours_start` | `08:00` | Start of business day |
+| `detection.off_hours_logins.business_hours_end` | `18:00` | End of business day |
+| `storage.db_path` | `data/cybermon.db` | SQLite database location |
+
+Settings can also be changed from the Settings panel inside the app without editing the file directly.
+
+---
+
+## 11. Running from source (developer mode)
+
+Point the pipeline at custom log files:
+
 ```bash
 venv\Scripts\python.exe main.py --auth-log path/to/auth.log --web-log path/to/access.log
 ```
 
-Press `Ctrl+C` to stop the server.
+Run only the tests for a specific module:
 
----
-
-## 7. Dashboard pages
-
-Then open your browser at:
-
-| URL | Page |
-|-----|------|
-| `http://127.0.0.1:5000/` | Overview — total count, severity chart |
-| `http://127.0.0.1:5000/violations` | Ranked violation list |
-| `http://127.0.0.1:5000/violations/1` | Single violation detail |
-| `http://127.0.0.1:5000/trend` | Today's violations by hour (line chart, 3 types) |
-| `http://127.0.0.1:5000/live` | Live monitor — real-time stream of new violations |
-| `http://127.0.0.1:5000/export` | Download CSV report |
-
----
-
-## Configuration
-
-All thresholds and settings live in `config/config.yaml`. No values are hardcoded in source files.
-
-| Setting | Default | Effect |
-|---------|---------|--------|
-| `detection.failed_logins.threshold` | 5 | Minimum failures in window to trigger alert |
-| `detection.failed_logins.time_window_minutes` | 10 | Rolling window size |
-| `detection.unauthorized_access.trigger_codes` | [403, 401] | HTTP status codes that count as unauthorised |
-| `dashboard.port` | 5000 | Port the Flask server listens on |
-
----
-
-## Phase completion status
-
-| Phase | What it adds | How to run |
-|-------|-------------|------------|
-| 0 | Scaffold, config | `venv\Scripts\python.exe main.py` |
-| 1 | Log ingestion | `venv\Scripts\pytest.exe tests/test_ingestion.py -v` |
-| 2 | Violation detection | `venv\Scripts\pytest.exe tests/test_detection.py -v` |
-| 3 | Risk scoring | `venv\Scripts\pytest.exe tests/test_scoring.py -v` |
-| 4 | SQLite storage | `venv\Scripts\pytest.exe tests/test_storage.py -v` |
-| 5 | Flask dashboard | `venv\Scripts\python.exe src/dashboard/app.py` |
-| 6 | Full pipeline + integration tests | `venv\Scripts\python.exe main.py` / `venv\Scripts\pytest.exe tests/ -v` |
-| U1 | Log file watcher (real-time tailing) | `venv\Scripts\pytest.exe tests/test_watcher.py -v` |
-| U2 | SSE route + live monitor page | `venv\Scripts\pytest.exe tests/test_live.py -v` |
-| U3 | Hourly trend chart | `venv\Scripts\pytest.exe tests/test_storage.py -v` |
-| U4 | `--live` flag + `start.bat` | `start.bat` or `main.py --live` |
+```bash
+venv\Scripts\pytest.exe tests/test_detection.py -v
+venv\Scripts\pytest.exe tests/test_scoring.py -v
+venv\Scripts\pytest.exe tests/test_storage.py -v
+```
