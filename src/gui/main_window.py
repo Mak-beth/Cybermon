@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # Version stamp at bottom
-        ver = QLabel("v2.0 — R5")
+        ver = QLabel("v2.0 — R6")
         ver.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver.setFixedHeight(32)
         ver.setStyleSheet(f"color: #4a4a6a; font-size: 11px; background: {_SIDEBAR_BG};")
@@ -221,12 +221,14 @@ class MainWindow(QMainWindow):
         from src.gui.live_feed        import LiveFeedPanel
         from src.gui.trend_panel      import TrendPanel
 
+        from src.gui.settings_panel import SettingsPanel
+
         panels = [
-            OverviewPanel(self._config,   parent=self),                           # 0 Overview
-            ViolationsTable(self._config, parent=self),                           # 1 Violations
-            LiveFeedPanel(self._config,   parent=self),                           # 2 Live Feed
-            TrendPanel(self._config,      parent=self),                           # 3 Trend
-            _PlaceholderPanel("Settings panel — available in R6", parent=self),   # 4 Settings
+            OverviewPanel(self._config,   parent=self),    # 0 Overview
+            ViolationsTable(self._config, parent=self),    # 1 Violations
+            LiveFeedPanel(self._config,   parent=self),    # 2 Live Feed
+            TrendPanel(self._config,      parent=self),    # 3 Trend
+            SettingsPanel(self._config,   parent=self),    # 4 Settings
         ]
         for panel in panels:
             self._stack.addWidget(panel)

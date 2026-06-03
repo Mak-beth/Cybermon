@@ -370,31 +370,52 @@ GUI:
 ---
 
 ### Phase R6 — Setup Wizard
-**Status:** Not started
-**Date Started:**
-**Date Completed:**
+**Status:** Complete
+**Date Started:** 2026-06-03
+**Date Completed:** 2026-06-03
 
 **Acceptance Criteria Results:**
-- [ ] First launch (no config) shows wizard
-- [ ] Standalone mode shows Page 2a
-- [ ] Network mode shows Page 2b
-- [ ] Test paths button identifies missing files
-- [ ] Wizard writes correct config.yaml
-- [ ] setup_complete: true written on completion
-- [ ] Second launch skips wizard
-- [ ] Settings panel shows current config
-- [ ] Save from settings updates config.yaml
-- [ ] Re-run wizard resets setup_complete
-- [ ] All wizard tests passing
-- [ ] All 121 original tests passing
+- [x] First launch (no config) shows wizard — _is_first_run() returns True when file absent or setup_complete key missing
+- [x] Standalone mode shows Page 2a — ModePage.nextId() returns _PAGE_STANDALONE
+- [x] Network mode shows Page 2b — ModePage.nextId() returns _PAGE_NETWORK
+- [x] Test paths button identifies missing files — os.path.exists() per field; green ✓ / red ✗ label
+- [x] Wizard writes correct config.yaml — write_wizard_config() merges into existing config
+- [x] setup_complete: true written on completion — written in write_wizard_config(), called from SetupWizard.accept()
+- [x] Second launch skips wizard — _is_first_run() returns False when setup_complete: true
+- [x] Settings panel shows current config — SettingsPanel reads config dict, populates all fields on construction
+- [x] Save from settings updates config.yaml — SettingsPanel._save() merges and writes yaml
+- [x] Re-run wizard resets setup_complete — SettingsPanel._reset_wizard() sets setup_complete: false + QMessageBox
+- [x] All wizard tests passing — 4 tests in tests/test_wizard.py, all pass
+- [x] All 121 original tests passing — 150 total pass (146 pre-R6 + 4 new wizard tests)
 
 **What was built:**
+- src/gui/wizard.py — SetupWizard(QWizard) with ModePage, StandalonePage (file paths + test button +
+  business hours + thresholds), NetworkPage (auto-detected IP + port + same common fields), ConfirmPage
+  (summary label populated via initializePage()); module-level is_first_run() and write_wizard_config()
+  helpers have zero Qt dependency so test_wizard.py needs no QApplication
+- src/gui/settings_panel.py — SettingsPanel(QWidget) replacing the R5 placeholder; shows log paths,
+  business hours, brute-force thresholds; Save button merges fields back into config.yaml;
+  Re-run wizard button sets setup_complete: false and shows confirmation dialog
+- tests/test_wizard.py — 4 tests targeting the two pure-IO helpers; no Qt imports
+- main.py — _is_first_run() private helper; QApplication created before first-run check;
+  wizard shown with exec() and result checked per user instruction
+  (wizard.exec() != QDialog.DialogCode.Accepted); config reloaded after acceptance;
+  --auth-log/--web-log argparse defaults changed from hardcoded paths to None with
+  config fallback so wizard-written paths are used on subsequent runs
+- src/gui/main_window.py — SettingsPanel wired in at index 4, version label → "v2.0 — R6"
+- config/config.yaml — setup_complete: true added so dev environment skips wizard
 
 **What didn't work and how it was fixed:**
+Nothing significant. QWizard ModernStyle renders page titles outside the page widget area on Windows
+(standard Qt behaviour) — layout readable at 600×480 minimum, no fix needed.
 
 **Deviations from REWORK_PHASES.md (if any):**
+- wizard.exec() result check uses != QDialog.DialogCode.Accepted per explicit user instruction
+  (clearer intent than == 0, identical behaviour)
+- test_wizard.py tests the two pure helper functions rather than instantiating QWizard; all four
+  required assertions are fully covered without a QApplication fixture
 
-**Test count at end of phase:**
+**Test count at end of phase:** 150 passing
 
 **Commit hash:**
 

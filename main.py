@@ -1,4 +1,5 @@
 import argparse
+import os
 import sqlite3
 import sys
 import threading
@@ -103,33 +104,63 @@ def _start_ingest_server(config: dict) -> None:
     time.sleep(1)
 
 
+def _is_first_run(config_path: str) -> bool:
+    """Return True when the wizard has never been completed."""
+    if not os.path.exists(config_path):
+        return True
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f) or {}
+    return not cfg.get("setup_complete", False)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cybermon — security log analysis pipeline")
-    parser.add_argument("--auth-log", default="logs/samples/auth.log",
+    # Defaults are None so that config values from the wizard take precedence;
+    # explicit CLI args still override (used by tests and manual runs).
+    parser.add_argument("--auth-log", default=None,
                         help="Path to Linux auth log file")
-    parser.add_argument("--web-log", default="logs/samples/access.log",
+    parser.add_argument("--web-log", default=None,
                         help="Path to Apache access log file")
     args = parser.parse_args()
 
-    # 1. Load config
-    config = yaml.safe_load(open("config/config.yaml"))
+    config_path = "config/config.yaml"
+
+    # 1. Load config — handle missing file on a fresh install
+    if os.path.exists(config_path):
+        config = yaml.safe_load(open(config_path)) or {}
+    else:
+        config = {}
+
+    # 2. Qt imports are inside main() so `from main import run_pipeline`
+    #    in tests never triggers Qt at import time.
+    from PyQt6.QtWidgets import QApplication, QDialog
+    app = QApplication(sys.argv)
+
+    # 3. First-run: show setup wizard before anything else.
+    if _is_first_run(config_path):
+        from src.gui.wizard import SetupWizard
+        wizard = SetupWizard(config, config_path=config_path)
+        if wizard.exec() != QDialog.DialogCode.Accepted:
+            sys.exit(0)
+        # Reload config — the wizard just wrote it.
+        config = yaml.safe_load(open(config_path)) or {}
+
     mode = config.get("mode", "standalone")
 
-    # 2. Run ingestion + detection + scoring pipeline
-    run_pipeline(args.auth_log, args.web_log, config)
+    # 4. Determine log paths: CLI args override config; config overrides built-in defaults.
+    auth_log = args.auth_log or config.get("auth_log_path", "logs/samples/auth.log")
+    web_log  = args.web_log  or config.get("web_log_path",  "logs/samples/access.log")
 
-    # 3. Network mode: start ingest endpoint on a background daemon thread.
-    #    Standalone mode: ingest endpoint is not started.
+    # 5. Run ingestion + detection + scoring pipeline
+    run_pipeline(auth_log, web_log, config)
+
+    # 6. Network mode: start ingest endpoint on a background daemon thread.
     if mode == "network":
         _start_ingest_server(config)
 
-    # 4. Launch the PyQt6 desktop window.
-    #    Imports are inside main() so that `from main import run_pipeline`
-    #    in tests never triggers Qt at import time.
-    from PyQt6.QtWidgets import QApplication
+    # 7. Launch the PyQt6 desktop window.
     from src.gui.main_window import MainWindow
 
-    app = QApplication(sys.argv)
     window = MainWindow(config)
     window.show()
     sys.exit(app.exec())
