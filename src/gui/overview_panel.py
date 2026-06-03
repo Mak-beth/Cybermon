@@ -170,7 +170,7 @@ class OverviewPanel(QWidget):
         self._build_ui()
 
         self._timer = QTimer(self)
-        self._timer.setInterval(30_000)
+        self._timer.setInterval(3_000)   # 3 s — matches live feed polling speed
         self._timer.timeout.connect(self.refresh)
         self._timer.start()
 

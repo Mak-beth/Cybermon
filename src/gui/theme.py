@@ -100,7 +100,7 @@ def build_app_stylesheet(palette: dict) -> str:
             padding: 6px 18px; border-radius: 2px;
         }}
         QTabBar::tab:selected {{ background: #7c3aed; color: white; }}
-        QLineEdit, QSpinBox, QTimeEdit, QComboBox {{
+        QLineEdit, QSpinBox, QTimeEdit {{
             background: {inp};
             color: {text};
             border: 1px solid {bdr};
@@ -109,11 +109,38 @@ def build_app_stylesheet(palette: dict) -> str:
             selection-background-color: #7c3aed;
             selection-color: white;
         }}
+        QComboBox {{
+            background: {inp};
+            color: {text};
+            border: 1px solid {bdr};
+            border-radius: 4px;
+            padding: 4px 8px;
+            padding-right: 28px;
+            selection-background-color: #7c3aed;
+            selection-color: white;
+        }}
+        QComboBox::drop-down {{
+            subcontrol-origin: border;
+            subcontrol-position: right center;
+            width: 24px;
+            border-left: 1px solid {bdr};
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
+            background: {card};
+        }}
+        QComboBox::drop-down:hover   {{ background: {bdr}; }}
+        QComboBox::drop-down:pressed {{ background: {muted}; }}
+        QComboBox::down-arrow {{
+            width: 10px;
+            height: 10px;
+        }}
         QComboBox QAbstractItemView {{
-            background: {card}; color: {text};
+            background: {card};
+            color: {text};
             border: 1px solid {bdr};
             selection-background-color: #7c3aed;
             selection-color: white;
+            outline: none;
         }}
         QCheckBox          {{ color: {text}; background: transparent; }}
         QCheckBox::indicator {{

@@ -60,10 +60,18 @@ def test_all_four_tiers_in_config_bounds():
     assert tiers["critical"]["min"] <= 20 <= tiers["critical"]["max"]
 
 
-def test_simulate_log_paths_use_samples_dir():
-    """simulate.py must write to logs/samples/ so main.py can pick them up."""
+def test_simulate_log_paths_follow_config():
+    """simulate.py reads log paths from config.yaml so it stays in sync with main.py.
+    Paths must be non-empty strings; the exact value depends on config."""
     spec = importlib.util.spec_from_file_location("simulate", "simulate.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert "samples" in mod.AUTH_LOG
-    assert "samples" in mod.WEB_LOG
+    assert isinstance(mod.AUTH_LOG, str) and len(mod.AUTH_LOG) > 0
+    assert isinstance(mod.WEB_LOG, str) and len(mod.WEB_LOG) > 0
+    # Must NOT write to the locked test fixtures
+    assert mod.AUTH_LOG != "logs/samples/auth.log", (
+        "simulate.py must not write to the test sample logs"
+    )
+    assert mod.WEB_LOG != "logs/samples/access.log", (
+        "simulate.py must not write to the test sample logs"
+    )

@@ -1,6 +1,10 @@
 """
-Appends realistic log lines to the sample log files, producing violations
+Appends realistic log lines to the configured log files, producing violations
 across all four severity tiers when the pipeline is run afterwards.
+
+Log paths are read from config/config.yaml (auth_log_path, web_log_path) so
+simulate.py always writes to the same files that main.py will process.
+Falls back to logs/live/auth.log and logs/live/access.log if config is absent.
 
 Run this script, then run `python main.py` to see all four tiers in the GUI.
 
@@ -11,12 +15,25 @@ Medium   8 failed logins for hacker       3   2    6
 High     3 x GET /admin -> 403            3   5   15
 Critical 20 failed logins for admin       5   4   20
 """
+import os
 import time
 from datetime import datetime
 
-# Write to the same files that main.py reads by default.
-AUTH_LOG = "logs/samples/auth.log"
-WEB_LOG  = "logs/samples/access.log"
+import yaml
+
+# ---------------------------------------------------------------------------
+# Resolve log paths from config — keeps simulate in sync with main.py
+# ---------------------------------------------------------------------------
+_AUTH_DEFAULT = "logs/live/auth.log"
+_WEB_DEFAULT  = "logs/live/access.log"
+
+try:
+    _cfg = yaml.safe_load(open("config/config.yaml"))
+    AUTH_LOG = _cfg.get("auth_log_path", _AUTH_DEFAULT)
+    WEB_LOG  = _cfg.get("web_log_path",  _WEB_DEFAULT)
+except Exception:
+    AUTH_LOG = _AUTH_DEFAULT
+    WEB_LOG  = _WEB_DEFAULT
 
 
 def _auth_ts(now: datetime) -> str:
@@ -28,23 +45,20 @@ def _web_ts(now: datetime) -> str:
 
 
 def append(filepath: str, line: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
     with open(filepath, "a") as f:
         f.write(line + "\n")
     print(f"[+] {filepath}: {line}")
 
 
 def main():
-    print("Cybermon simulator starting.\n")
+    print(f"Cybermon simulator starting.")
+    print(f"  auth log : {AUTH_LOG}")
+    print(f"  web log  : {WEB_LOG}\n")
 
     pid_base = 2000
 
-    # ------------------------------------------------------------------
     # Low (score 4): 3 failed logins for 'guest'
-    #   count=3 > threshold(2) -> detection trigger
-    #   likelihood: count<=5 -> 2
-    #   impact:     'guest' not in HIGH_IMPACT_USERS -> 2
-    #   score:      2 x 2 = 4 -> Low
-    # ------------------------------------------------------------------
     print(">> Low: 3 failed logins for guest")
     for i in range(3):
         now = datetime.now()
@@ -55,13 +69,7 @@ def main():
         append(AUTH_LOG, line)
         time.sleep(0.1)
 
-    # ------------------------------------------------------------------
     # Medium (score 6): 8 rapid failed SSH logins for 'hacker'
-    #   count=8 > threshold(2) -> detection trigger
-    #   likelihood: count<=9 -> 3
-    #   impact:     'hacker' not in HIGH_IMPACT_USERS -> 2
-    #   score:      3 x 2 = 6 -> Medium
-    # ------------------------------------------------------------------
     print("\n>> Medium: 8 failed logins for hacker")
     for i in range(8):
         now = datetime.now()
@@ -72,12 +80,7 @@ def main():
         append(AUTH_LOG, line)
         time.sleep(0.5)
 
-    # ------------------------------------------------------------------
     # High (score 15): 3 unauthorized access attempts to /admin
-    #   likelihood: unauthorized_access -> 3
-    #   impact:     /admin in HIGH_IMPACT_RESOURCES -> 5
-    #   score:      3 x 5 = 15 -> High
-    # ------------------------------------------------------------------
     print("\n>> High: 3 x GET /admin -> 403")
     for i in range(3):
         now = datetime.now()
@@ -88,14 +91,7 @@ def main():
         append(WEB_LOG, line)
         time.sleep(0.5)
 
-    # ------------------------------------------------------------------
     # Critical (score 20): 20 rapid failed logins for 'admin'
-    #   All appended without sleep so all fall inside the 10-minute window.
-    #   count=20 > threshold(2) -> detection trigger
-    #   likelihood: count>19 -> 5
-    #   impact:     'admin' in HIGH_IMPACT_USERS -> 4
-    #   score:      5 x 4 = 20 -> Critical
-    # ------------------------------------------------------------------
     print("\n>> Critical: 20 rapid failed logins for admin")
     for i in range(20):
         now = datetime.now()
@@ -104,11 +100,10 @@ def main():
             f"Failed password for admin from 10.0.0.50 port 22 ssh2"
         )
         append(AUTH_LOG, line)
-        # No sleep: keep all 20 inside the 10-minute detection window
 
     print("\nSimulation complete.")
-    print(f"  auth.log  : 31 lines appended  ({AUTH_LOG})")
-    print(f"  access.log:  3 lines appended  ({WEB_LOG})")
+    print(f"  auth log : 31 lines appended  ({AUTH_LOG})")
+    print(f"  web log  :  3 lines appended  ({WEB_LOG})")
     print("\nRun `python main.py` to process the logs and see all four severity tiers.")
 
 
