@@ -1,6 +1,9 @@
 mode: standalone          # standalone | network
 setup_complete: true
 
+ui:
+  theme: light             # light | dark
+
 server:
   host: 0.0.0.0
   port: 5001              # ingest endpoint port (separate from dashboard port 5000)

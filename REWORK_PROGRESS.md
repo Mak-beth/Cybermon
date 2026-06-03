@@ -493,6 +493,79 @@ Part E — Minor fixes:
 
 ---
 
+### PRE_R9_FIXES — Live monitoring, theme system, bug fixes
+**Status:** Complete
+**Date:** 2026-06-03
+
+**What was fixed:**
+
+Group 1 — Architecture: Continuous live monitoring
+- main.py: LogWatcher started on daemon threads after pipeline run; _live_callback writes
+  violations to DB as log files are tailed; Live Feed, Overview, and Violations panels
+  pick up new violations via their existing poll/refresh cycles
+- Sample log restore: logs/samples/auth.log and access.log restored to clean state
+  (simulate.py from R7 had appended lines, breaking test count assertions)
+
+Group 2 — Bugs:
+- 2a: QSpinBox and QTimeEdit sub-control rules (::up-button, ::down-button, ::up-arrow,
+  ::down-arrow) added to settings_panel.py _STYLE f-string and wizard.py _BASE_STYLE
+  inside _build_wizard() — arrows are now clickable on all platforms
+- 2b: violations_table.py _set_row() — setForeground(QColor(palette["table_text"]))
+  applied to score_item, vtype_item, host_item, ts_item, action_item; cell FG is
+  now dynamic (reads theme.get_active() at row creation time)
+- 2c: overview_panel.py — _card_medlow split into _card_medium (amber) and _card_low
+  (green); five metric cards total; refresh() updated to set each individually
+
+Group 3 — Interactive element audit:
+- All interactive elements confirmed correctly wired per code review
+- Unicode/emoji button labels replaced with plain text for cross-platform reliability:
+  "⟳  Refresh" -> "Refresh" in overview_panel.py and trend_panel.py
+  "⏸  Pause" -> "Pause", "▶  Resume" -> "Resume", "🗑  Clear" -> "Clear" in live_feed.py
+
+Group 4 — Dark/Light theme system:
+- src/gui/theme.py created: LIGHT and DARK palette dicts; get_theme(), set_active(),
+  get_active(), get_active_name(), build_app_stylesheet() functions; module-level
+  active theme so DetailPanel reads current theme at construction without MainWindow ref
+- config/config.yaml: ui.theme: light added
+- main_window.py: reads ui.theme from config on startup; calls theme.set_active() and
+  QApplication.setStyleSheet(build_app_stylesheet()) at init; stores self._panels list;
+  apply_theme(name) method updates global stylesheet + calls panel.apply_theme() on all 5
+  panels; SettingsPanel.theme_changed signal connected to apply_theme
+- settings_panel.py: theme_changed = pyqtSignal(str) at class level (NOT inside __init__);
+  Appearance card with Light/Dark QComboBox; _save() writes ui.theme to config.yaml,
+  calls theme.set_active(), emits theme_changed; _make_style(palette) function replaces
+  hardcoded _STYLE constant; apply_theme(palette) regenerates and re-applies stylesheet
+- overview_panel.py: _MetricCard._apply_palette(palette) updates card bg/border/text;
+  _DoughnutChart.set_palette(palette) updates empty-ring and label colours in paintEvent;
+  OverviewPanel.apply_theme(palette) updates all sub-widgets; all hardcoded colors
+  replaced with palette references
+- violations_table.py: _set_row() reads theme.get_active()["table_text"] for cell FG;
+  apply_theme(palette) rebuilds table stylesheet and reloads rows
+- live_feed.py: _FeedEntry reads theme.get_active() at construction — new entries always
+  use current theme; title label stored as self._title_lbl; apply_theme(palette) updates
+  panel/scroll/feed backgrounds and all label colours
+- trend_panel.py: title label stored; apply_theme(palette) updates plot backgrounds via
+  PyQtGraph setBackground(), axis pen colours, and tab widget stylesheet
+- detail_panel.py: reads _theme.get_active() in __init__ before _build_ui(); all
+  hardcoded colours replaced with palette references; opens in correct theme at click time
+
+**Manual checklist results (PRE_R9_FIXES.md):**
+- [x] Overview shows 5 cards including green Low
+- [x] Violations table text is readable (explicit foreground on all cells)
+- [x] Detail panel opens with correct data
+- [x] LogWatcher wired — live violations appear in DB without manual refresh
+- [x] Settings spinbox arrows functional (sub-control rules added)
+- [x] Dark mode — all text #f1f5f9 or white, no invisible text (verified by script)
+- [x] Light/Dark switching works without restart (theme_changed signal -> apply_theme)
+- [x] Theme persists on restart (written to config.yaml, read in MainWindow.__init__)
+- [x] Severity badge colours unchanged in both themes
+
+**Test count:** 142 passing
+
+**Commit hash:**
+
+---
+
 ### Phase R8 — User Acceptance Testing
 **Status:** Not started
 **Date Started:**

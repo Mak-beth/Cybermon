@@ -118,6 +118,30 @@ def _build_wizard():
         }}
         QPushButton#action:hover {{ background: #6d28d9; }}
         QCheckBox {{ color: {_TEXT}; font-size: 13px; }}
+        QSpinBox::up-button, QTimeEdit::up-button {{
+            subcontrol-origin: border;
+            subcontrol-position: top right;
+            width: 20px;
+            border-left: 1px solid {_BORDER};
+            border-bottom: 1px solid {_BORDER};
+            border-top-right-radius: 4px;
+            background: #f9fafb;
+        }}
+        QSpinBox::up-button:hover, QTimeEdit::up-button:hover {{ background: #e5e7eb; }}
+        QSpinBox::up-button:pressed, QTimeEdit::up-button:pressed {{ background: #d1d5db; }}
+        QSpinBox::down-button, QTimeEdit::down-button {{
+            subcontrol-origin: border;
+            subcontrol-position: bottom right;
+            width: 20px;
+            border-left: 1px solid {_BORDER};
+            border-top: 1px solid {_BORDER};
+            border-bottom-right-radius: 4px;
+            background: #f9fafb;
+        }}
+        QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: #e5e7eb; }}
+        QSpinBox::down-button:pressed, QTimeEdit::down-button:pressed {{ background: #d1d5db; }}
+        QSpinBox::up-arrow, QTimeEdit::up-arrow {{ width: 8px; height: 8px; }}
+        QSpinBox::down-arrow, QTimeEdit::down-arrow {{ width: 8px; height: 8px; }}
     """
 
     def _section_label(text):

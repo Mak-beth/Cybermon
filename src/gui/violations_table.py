@@ -30,6 +30,7 @@ from src.gui.data_access import (
     get_unique_hosts,
     get_violations_for_export,
 )
+from src.gui import theme as _theme
 
 # ---------------------------------------------------------------------------
 # Severity colour palette
@@ -255,28 +256,34 @@ class ViolationsTable(QWidget):
         badge.setData(Qt.ItemDataRole.UserRole, v.get("id"))
         self._table.setItem(row, _COL_SEVERITY, badge)
 
+        _CELL_FG = QColor(_theme.get_active()["table_text"])
+
         score_val = v.get("risk_score", 0)
         score_item = QTableWidgetItem()
         score_item.setData(Qt.ItemDataRole.DisplayRole, score_val)
         score_item.setTextAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
+        score_item.setForeground(_CELL_FG)
         score_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_SCORE, score_item)
 
         vtype_item = QTableWidgetItem(
             v.get("violation_type", "").replace("_", " ").title()
         )
+        vtype_item.setForeground(_CELL_FG)
         vtype_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_TYPE, vtype_item)
 
         host_item = QTableWidgetItem(v.get("source_host", ""))
+        host_item.setForeground(_CELL_FG)
         host_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_HOST, host_item)
 
         ts_raw = str(v.get("timestamp", ""))
         ts_display = ts_raw[:19].replace("T", " ") if ts_raw else ""
         ts_item = QTableWidgetItem(ts_display)
+        ts_item.setForeground(_CELL_FG)
         ts_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_TIMESTAMP, ts_item)
 
@@ -284,8 +291,41 @@ class ViolationsTable(QWidget):
         if len(action) > _MAX_ACTION_LEN:
             action = action[:_MAX_ACTION_LEN - 1] + "…"
         action_item = QTableWidgetItem(action)
+        action_item.setForeground(_CELL_FG)
         action_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_ACTION, action_item)
+
+    # ------------------------------------------------------------------
+    # Theme support
+    # ------------------------------------------------------------------
+
+    def apply_theme(self, palette: dict) -> None:
+        """Reapply all stylesheets and reload rows with updated cell colours."""
+        self.setStyleSheet(f"background: {palette['content_bg']}; color: {palette['text_primary']};")
+        self._table.setStyleSheet(f"""
+            QTableWidget {{
+                border: 1px solid {palette['border']};
+                background: {palette['card_bg']};
+                alternate-background-color: {palette['table_alt']};
+                gridline-color: {palette['border']};
+                font-size: 13px;
+                color: {palette['table_text']};
+            }}
+            QHeaderView::section {{
+                background: {palette['card_bg']};
+                color: {palette['text_primary']};
+                font-weight: bold;
+                padding: 6px;
+                border: none;
+                border-bottom: 2px solid {palette['border']};
+            }}
+            QTableWidget::item:selected {{
+                background: {palette['table_selected']};
+                color: {palette['text_primary']};
+            }}
+        """)
+        self._status.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 12px;")
+        self._reload_table()
 
     # ------------------------------------------------------------------
     # Event handlers

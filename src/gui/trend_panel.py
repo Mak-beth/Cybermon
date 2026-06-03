@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.data_access import get_trend_by_day_week, get_trend_by_hour_today
+from src.gui import theme as _theme
 
 # Suppress pyqtgraph's "no display" warning when running headless
 pg.setConfigOption("crashWarning", False)
@@ -74,12 +75,14 @@ class TrendPanel(QWidget):
 
         # --- Header ---
         hdr = QHBoxLayout()
-        title = QLabel("Trend")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
-        hdr.addWidget(title)
+        self._title_lbl = QLabel("Trend")
+        self._title_lbl.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {_theme.get_active()['text_primary']};"
+        )
+        hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
-        refresh_btn = QPushButton("⟳  Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setFixedWidth(100)
         refresh_btn.setStyleSheet("""
             QPushButton {
@@ -172,6 +175,40 @@ class TrendPanel(QWidget):
 
         layout.addWidget(self._week_plot)
         return widget
+
+    # ------------------------------------------------------------------
+    # Theme support
+    # ------------------------------------------------------------------
+
+    def apply_theme(self, palette: dict) -> None:
+        bg = palette["content_bg"]
+        text = palette["text_primary"]
+        muted = palette["text_secondary"]
+        bdr = palette["border"]
+
+        self.setStyleSheet(f"background: {bg};")
+
+        # Update title label
+        self._title_lbl.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {text};"
+        )
+
+        # Tab widget
+        self._tabs.setStyleSheet(f"""
+            QTabWidget::pane   {{ border: 1px solid {bdr}; border-radius: 4px; background: {bg}; }}
+            QTabBar::tab       {{ padding: 6px 18px; color: {muted}; background: {palette['card_bg']}; }}
+            QTabBar::tab:selected {{ background: #7c3aed; color: white; border-radius: 2px; }}
+        """)
+
+        # PyQtGraph plots — update background colour
+        for plot in (self._today_plot, self._week_plot):
+            plot.setBackground(bg)
+            pi = plot.getPlotItem()
+            pi.setTitle(pi.titleLabel.text, color=text, size="12pt")
+            pi.getAxis("left").setPen(pg.mkPen(muted))
+            pi.getAxis("bottom").setPen(pg.mkPen(muted))
+            pi.getAxis("left").setTextPen(pg.mkPen(muted))
+            pi.getAxis("bottom").setTextPen(pg.mkPen(muted))
 
     # ------------------------------------------------------------------
     # Data loading

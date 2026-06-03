@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.data_access import get_max_violation_id, get_new_violations_since
+from src.gui import theme as _theme
 
 # ---------------------------------------------------------------------------
 # Severity colours (shared palette)
@@ -47,10 +48,11 @@ class _FeedEntry(QFrame):
 
     def __init__(self, violation: dict, parent=None):
         super().__init__(parent)
+        palette = _theme.get_active()
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setStyleSheet(
-            "QFrame { background: #ffffff; border: 1px solid #e2e8f0;"
-            " border-radius: 4px; }"
+            f"QFrame {{ background: {palette['card_bg']}; "
+            f"border: 1px solid {palette['border']}; border-radius: 4px; }}"
         )
         self.setFixedHeight(40)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -59,7 +61,7 @@ class _FeedEntry(QFrame):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(12)
 
-        # Severity badge
+        # Severity badge — colours are fixed in both themes
         severity = violation.get("severity", "")
         bg, fg = _SEVERITY_COLOURS.get(severity, ("#e5e7eb", "#374151"))
         badge = QLabel(severity)
@@ -74,13 +76,13 @@ class _FeedEntry(QFrame):
         # Violation type
         vtype = violation.get("violation_type", "").replace("_", " ").title()
         type_lbl = QLabel(vtype)
-        type_lbl.setStyleSheet("color: #1e293b; font-size: 12px;")
+        type_lbl.setStyleSheet(f"color: {palette['text_primary']}; font-size: 12px;")
         type_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(type_lbl, stretch=1)
 
         # Source host
         host_lbl = QLabel(violation.get("source_host", ""))
-        host_lbl.setStyleSheet("color: #6b7280; font-size: 12px;")
+        host_lbl.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 12px;")
         host_lbl.setFixedWidth(140)
         layout.addWidget(host_lbl)
 
@@ -88,7 +90,7 @@ class _FeedEntry(QFrame):
         ts_raw = str(violation.get("timestamp", ""))
         ts_display = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw[:19]
         time_lbl = QLabel(ts_display)
-        time_lbl.setStyleSheet("color: #9ca3af; font-size: 11px;")
+        time_lbl.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 11px;")
         time_lbl.setFixedWidth(60)
         layout.addWidget(time_lbl)
 
@@ -127,19 +129,22 @@ class LiveFeedPanel(QWidget):
         root.setSpacing(10)
 
         # --- Header ---
+        p = _theme.get_active()
         hdr = QHBoxLayout()
         hdr.setSpacing(10)
 
-        title = QLabel("Live Feed")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
-        hdr.addWidget(title)
+        self._title_lbl = QLabel("Live Feed")
+        self._title_lbl.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {p['text_primary']};"
+        )
+        hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
-        self._status_lbl = QLabel("Watching for new violations…")
-        self._status_lbl.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        self._status_lbl = QLabel("Watching for new violations...")
+        self._status_lbl.setStyleSheet(f"color: {p['text_secondary']}; font-size: 12px;")
         hdr.addWidget(self._status_lbl)
 
-        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn = QPushButton("Pause")
         self._pause_btn.setCheckable(True)
         self._pause_btn.setFixedWidth(90)
         self._pause_btn.setStyleSheet("""
@@ -154,7 +159,7 @@ class LiveFeedPanel(QWidget):
         self._pause_btn.clicked.connect(self._on_pause_toggled)
         hdr.addWidget(self._pause_btn)
 
-        clear_btn = QPushButton("🗑  Clear")
+        clear_btn = QPushButton("Clear")
         clear_btn.setFixedWidth(80)
         clear_btn.setStyleSheet("""
             QPushButton {
@@ -170,13 +175,14 @@ class LiveFeedPanel(QWidget):
         root.addLayout(hdr)
 
         # --- Scrollable feed ---
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background: #f8fafc;")
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setStyleSheet(f"background: {p['content_bg']};")
+        scroll = self._scroll
 
         self._feed_widget = QWidget()
-        self._feed_widget.setStyleSheet("background: #f8fafc;")
+        self._feed_widget.setStyleSheet(f"background: {p['content_bg']};")
         self._feed_layout = QVBoxLayout(self._feed_widget)
         self._feed_layout.setContentsMargins(0, 0, 0, 0)
         self._feed_layout.setSpacing(4)
@@ -189,9 +195,30 @@ class LiveFeedPanel(QWidget):
         # --- Empty-state hint (shown until first entry arrives) ---
         self._empty_lbl = QLabel("No new violations detected yet.")
         self._empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_lbl.setStyleSheet("color: #9ca3af; font-size: 14px;")
+        self._empty_lbl.setStyleSheet(f"color: {p['text_secondary']}; font-size: 14px;")
         # Place it inside the scroll area's content widget
         self._feed_layout.insertWidget(0, self._empty_lbl)
+
+    # ------------------------------------------------------------------
+    # Theme support
+    # ------------------------------------------------------------------
+
+    def apply_theme(self, palette: dict) -> None:
+        bg = palette["content_bg"]
+        self.setStyleSheet(f"background: {bg};")
+        self._scroll.setStyleSheet(f"background: {bg};")
+        self._feed_widget.setStyleSheet(f"background: {bg};")
+        self._title_lbl.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {palette['text_primary']};"
+        )
+        self._status_lbl.setStyleSheet(
+            f"color: {palette['text_secondary']}; font-size: 12px;"
+        )
+        self._empty_lbl.setStyleSheet(
+            f"color: {palette['text_secondary']}; font-size: 14px;"
+        )
+        # Existing feed entries are transient; new ones will use the updated theme
+        # via _FeedEntry reading theme.get_active() at construction time.
 
     # ------------------------------------------------------------------
     # Polling and entry management
@@ -261,7 +288,7 @@ class LiveFeedPanel(QWidget):
 
     def _on_pause_toggled(self, checked: bool) -> None:
         self._paused = checked
-        self._pause_btn.setText("▶  Resume" if checked else "⏸  Pause")
+        self._pause_btn.setText("Resume" if checked else "Pause")
 
     def _clear(self) -> None:
         """Remove all displayed cards and advance watermark to current DB max."""

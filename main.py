@@ -167,17 +167,42 @@ def main():
         logging.exception("Pipeline error during startup")
         pipeline_error = str(exc)
 
-    # 6. Network mode: start ingest endpoint on a background daemon thread.
+    # 6. Start continuous live monitoring — tails log files on daemon threads.
+    #    New violations are written to the DB as they arrive; the Live Feed,
+    #    Overview, and Violations panels pick them up via their normal poll/refresh cycles.
+    from src.ingestion.watcher import LogWatcher
+
+    def _live_callback(scored_violation: dict, db_path: str) -> None:
+        """Called by LogWatcher for each new violation detected from a new log line."""
+        try:
+            scored_violation["triggering_event_id"] = find_triggering_event_id(
+                scored_violation, db_path
+            )
+            vid = insert_violation(scored_violation, db_path)
+            insert_risk_score(vid, scored_violation, db_path)
+        except Exception as exc:
+            logging.getLogger(__name__).error("Live callback error: %s", exc)
+
+    db_path = config["storage"]["db_path"]
+    watcher = LogWatcher(config)
+    watcher.start(
+        auth_log=auth_log,
+        web_log=web_log,
+        on_violation=lambda v: _live_callback(v, db_path),
+    )
+    # watcher threads are daemon threads — stop automatically when the app exits
+
+    # 7. Network mode: start ingest endpoint on a background daemon thread.
     if mode == "network":
         _start_ingest_server(config)
 
-    # 7. Launch the PyQt6 desktop window.
+    # 8. Launch the PyQt6 desktop window.
     from src.gui.main_window import MainWindow
 
     window = MainWindow(config)
     window.show()
 
-    # 8. Surface any pipeline error in the app rather than a crash dialog.
+    # 9. Surface any pipeline error in the app rather than a crash dialog.
     if pipeline_error:
         window.show_error_banner(pipeline_error)
 
