@@ -254,7 +254,10 @@ cybermon/
 │   ├── cybermon.spec           ← PyInstaller spec: CyberMon.exe (windowed, onefile)
 │   ├── agent.spec              ← PyInstaller spec: CyberMonAgent.exe (console, onefile)
 │   └── make_icon.py            ← icon generation script (Qt + Pillow)
-└── tests/                      ← 142 tests across 10 files
+├── scripts/
+│   ├── benchmark.py            ← pipeline performance benchmark (real LogHub data)
+│   └── tier_check.py           ← verifies simulate.py produces all four tiers
+└── tests/                      ← 178 tests across 14 files
 ```
 
 ---
@@ -273,25 +276,29 @@ cybermon/
 | pandas | — | Time-window sliding analysis in detection rules |
 | PyInstaller | 6.x | Packages app + agent as standalone `.exe` files |
 | Pillow | — | Multi-size `.ico` generation at build time |
-| pytest | — | 142 unit and integration tests |
+| pytest | — | 178 unit and integration tests |
 
 ---
 
 ## Test coverage
 
 ```
-tests/test_ingestion.py          18 tests   log parsing, normalisation, timestamp fix
-tests/test_detection.py          17 tests   all three detection rules
-tests/test_scoring.py            31 tests   likelihood, impact, severity bands, tiers
-tests/test_storage.py            31 tests   DB init, read, write, trend queries
-tests/test_ingest_endpoint.py    12 tests   POST /ingest, validation, source_host
-tests/test_agent.py               8 tests   tail, POST structure, retry logic
-tests/test_watcher.py             8 tests   log tailing, real-time violation callback
-tests/test_integration.py         7 tests   end-to-end pipeline
-tests/test_r7.py                  6 tests   simulate.py tier patterns, config bounds
-tests/test_wizard.py              4 tests   wizard config writer, first-run detection
-──────────────────────────────────────────
-Total                           142 tests   all passing
+tests/test_scoring.py                 31 tests   likelihood, impact, severity bands, tiers
+tests/test_storage.py                 31 tests   DB init, read, write, trend queries
+tests/test_detection.py               25 tests   all three rules, prefix match, spray
+tests/test_ingestion.py               18 tests   log parsing, normalisation, timestamp fix
+tests/test_ingest_endpoint.py         13 tests   POST /ingest, validation, slow brute force
+tests/test_r11a_auth.py               10 tests   API key auth, payload limits, host validation
+tests/test_watcher.py                 10 tests   log tailing, live detection, alert dedup
+tests/test_agent.py                    8 tests   tail, POST structure, retry logic
+tests/test_r11b_stateful_detection.py  7 tests   DB-window brute-force detection
+tests/test_r11c_config_scoring.py      7 tests   config-driven scoring rules
+tests/test_integration.py              7 tests   end-to-end pipeline
+tests/test_r7.py                       6 tests   simulate.py tier patterns, config bounds
+tests/test_wizard.py                   4 tests   wizard config writer, first-run detection
+tests/test_r11e_accuracy.py            1 test    ground-truth accuracy, zero false positives
+─────────────────────────────────────────────────
+Total                                178 tests   all passing
 ```
 
 Run the suite:
@@ -335,6 +342,11 @@ scoring:
     medium:   { min: 5,  max: 9  }
     high:     { min: 10, max: 16 }
     critical: { min: 17, max: 25 }
+  rules:                            # all scoring constants are configurable
+    high_impact_users: [root, admin]
+    high_impact_resources: [/admin, /.env, /phpmyadmin]
+    med_impact_resources: [/config, /wp-admin]
+    # ...likelihood bands and per-type impact values — see config_default.yaml
 
 storage:
   db_path: data/cybermon.db
@@ -342,6 +354,7 @@ storage:
 server:                             # network mode only
   host: 0.0.0.0
   port: 5001
+  api_key: "CHANGE_ME_BEFORE_DEPLOY"   # must match api_key in agent_config.yaml
 
 auth_log_path: logs/auth.log
 web_log_path:  logs/access.log

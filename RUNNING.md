@@ -1,7 +1,7 @@
 # Running CyberMon
 
 Step-by-step instructions for getting the project running locally.
-Current state: **Rework phases R0–R7 complete** — native PyQt6 desktop application.
+Current state: **Rework phases R0–R9 + R11 hardening complete** — native PyQt6 desktop application, packaged exes, authenticated network mode.
 
 ---
 
@@ -73,7 +73,7 @@ Installs: `PyQt6`, `PyQtGraph`, `flask`, `pandas`, `pyyaml`, `requests`, `pytest
 venv\Scripts\pytest.exe tests/ -v
 ```
 
-Expected: **142 tests, all passing**.
+Expected: **178 tests, all passing**.
 
 ---
 
@@ -124,7 +124,7 @@ The simulator produces violations across all four tiers:
 
 | Tier | Pattern | Score |
 |------|---------|-------|
-| Low | 3 failed logins for `guest` | 4 |
+| Low | 3 failed logins for `guest_HHMMSS` (unique per run) | 4 |
 | Medium | 8 failed logins for `hacker` | 6 |
 | High | 3 × GET /admin returning 403 | 15 |
 | Critical | 20 failed logins for `admin` | 20 |

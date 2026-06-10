@@ -77,10 +77,5 @@ scoring:
     unauthorized_access_default_impact: 2
 storage:
   db_path: data/cybermon.db
-dashboard:
-  host: 127.0.0.1
-  port: 5000
-  debug: false
-  export_path: exports/
 auth_log_path: logs/auth.log
 web_log_path: logs/access.log

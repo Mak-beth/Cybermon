@@ -661,8 +661,7 @@ event). Standalone path untouched.
 to "May 28" — outside any wall-clock window. They now stamp lines with the
 current time. Threshold semantics in network mode are count >= threshold
 (the batch rule keeps its original strict > threshold).
-**Commit hash:** 7e6587a (see git log: "R11-B: stateful failed-login detection
-in network mode via DB query")
+**Commit hash:** 022aa28
 
 #### Part R11-C: Config-Driven Scoring
 **Status:** Complete
@@ -676,7 +675,7 @@ with one-time stderr warning when scoring.rules is absent. scorer.py
 propagates config. Settings panel gained a "Risk Scoring Rules" card with
 three editable list fields that save back to config.yaml.
 test_scoring.py/test_r7.py call sites updated to pass a minimal config dict.
-**Commit hash:** see git log ("R11-C: config-driven scoring")
+**Commit hash:** 43293a9
 
 #### Part R11-D: Detection Accuracy Fixes
 **Status:** Complete

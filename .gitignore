@@ -8,3 +8,13 @@ logs/samples/*.log
 .env
 agent_config.yaml
 agent.log
+
+# Build artifacts (R9 packaging)
+dist/
+build/work/
+tmp/
+
+# Runtime files
+cybermon.log
+logs/auth.log
+logs/access.log

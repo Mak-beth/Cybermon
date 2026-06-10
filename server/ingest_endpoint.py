@@ -1,13 +1,11 @@
 """CyberMon ingest endpoint — receives log lines from remote agents.
 
-Completely separate Flask app instance from the dashboard (src/dashboard/app.py).
+Standalone Flask app instance running on a daemon thread in network mode.
 Only route: POST /ingest.
-
-This separation ensures the ingest server survives independently when the
-dashboard is replaced in R3 with a PyQt6 GUI.
 """
 import os
 import re
+import sys
 
 import yaml
 from flask import Flask, jsonify, request
@@ -16,16 +14,30 @@ from flask import Flask, jsonify, request
 # Path helpers
 # ---------------------------------------------------------------------------
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_BASE_DIR = os.path.abspath(os.path.join(_HERE, ".."))
+
+
+def _base_dir() -> str:
+    """Project root in development; the exe's directory when frozen.
+
+    In a PyInstaller onefile build this module is unpacked into a temp dir
+    (sys._MEIPASS) — the writable config.yaml and database live NEXT TO the
+    exe, never inside the bundle.
+    """
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.dirname(sys.executable)
+    return os.path.abspath(os.path.join(_HERE, ".."))
+
+
+_BASE_DIR = _base_dir()
 
 # ---------------------------------------------------------------------------
-# Flask app — fresh instance, no shared state with dashboard
+# Flask app — fresh instance, no shared state with the GUI
 # ---------------------------------------------------------------------------
 ingest_app = Flask(__name__)
 
 
 def _load_config() -> dict:
-    """Load config.yaml from the project root."""
+    """Load the writable config.yaml (project root, or next to the exe)."""
     path = os.path.join(_BASE_DIR, "config", "config.yaml")
     with open(path, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
