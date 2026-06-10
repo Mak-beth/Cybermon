@@ -110,7 +110,9 @@ def ingest():
 
     from src.ingestion.parser import parse_auth_log_line, parse_access_log_line
     from src.ingestion.preprocessor import normalize_event
-    from src.detection.detector import run_detection
+    from src.detection.rules.failed_logins import detect_failed_logins_from_db
+    from src.detection.rules.unauthorized_access import detect_unauthorized_access
+    from src.detection.rules.off_hours import detect_off_hours_logins
     from src.scoring.scorer import score_all_violations
     from src.storage.db import init_db
     from src.storage.writer import (
@@ -136,8 +138,17 @@ def ingest():
     if events:
         insert_events(events, db_path)
 
-    # Detect and score on this batch
-    violations = run_detection(events, config)
+    # Detect and score.  Failed logins are stateful: the rule queries the DB
+    # for the full time window so slow brute forces spread across many small
+    # batches are still caught.  The other two rules are self-contained per
+    # event, so batch-only detection is correct for them.
+    failed_login_violations = detect_failed_logins_from_db(
+        events, config, db_path, host
+    )
+    unauth_violations = detect_unauthorized_access(events, config)
+    off_hours_violations = detect_off_hours_logins(events, config)
+
+    violations = failed_login_violations + unauth_violations + off_hours_violations
     scored = score_all_violations(violations, config)
 
     for v in scored:

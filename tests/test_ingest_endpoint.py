@@ -1,6 +1,7 @@
 """Tests for the ingest endpoint (server/ingest_endpoint.py)."""
 import os
 import sqlite3
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,16 @@ def _set_api_key():
     _ie._EXPECTED_KEY = _TEST_KEY
     yield
     _ie._EXPECTED_KEY = old
+
+
+def _now_stamp() -> str:
+    """Syslog-style timestamp for the current moment.
+
+    Failed-login detection is stateful (R11-B): it counts events within the
+    configured window measured from wall-clock now, so test log lines must
+    carry current timestamps to land inside the window.
+    """
+    return datetime.now().strftime("%b %d %H:%M:%S")
 
 
 # ---------------------------------------------------------------------------
@@ -122,11 +133,11 @@ def test_source_host_stored_from_post_body(tmp_path, config):
     db_path = str(tmp_path / "host_test.db")
     patched = {**config, "storage": {"db_path": db_path}}
 
-    # Brute-force: 10 failed SSH logins in the same minute → triggers failed_logins
+    # Brute-force: 10 failed SSH logins right now → triggers failed_logins
     lines = [
-        f"May 28 10:00:{i:02d} server sshd[1234]: "
+        f"{_now_stamp()} server sshd[1234]: "
         f"Failed password for bruteman from 10.0.0.1 port 22 ssh2"
-        for i in range(10)
+        for _ in range(10)
     ]
 
     ingest_app.config["TESTING"] = True
@@ -180,9 +191,9 @@ def test_pipeline_end_to_end_post_to_stored_violation(tmp_path, config):
     patched = {**config, "storage": {"db_path": db_path}}
 
     lines = [
-        f"May 28 10:00:{i:02d} server sshd[1234]: "
+        f"{_now_stamp()} server sshd[1234]: "
         f"Failed password for hacker from 9.9.9.9 port 22 ssh2"
-        for i in range(10)
+        for _ in range(10)
     ]
 
     ingest_app.config["TESTING"] = True
@@ -231,3 +242,33 @@ def test_pipeline_web_line_end_to_end(tmp_path, config):
     count = cur.fetchone()[0]
     conn.close()
     assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# R11-B: stateful detection across batches
+# ---------------------------------------------------------------------------
+
+def test_slow_brute_force_detected_across_batches(tmp_path, config):
+    """One failed login per batch — batch-only detection misses this entirely.
+
+    With DB-window detection (threshold=2), the second batch must produce a
+    violation because the first batch's event is still inside the window.
+    """
+    db_path = str(tmp_path / "slow_brute.db")
+    patched = {**config, "storage": {"db_path": db_path}}
+
+    def _line() -> str:
+        return (f"{_now_stamp()} server sshd[1234]: "
+                f"Failed password for victim from 6.6.6.6 port 22 ssh2")
+
+    ingest_app.config["TESTING"] = True
+    with patch("server.ingest_endpoint._load_config", return_value=patched):
+        with ingest_app.test_client() as c:
+            first = c.post("/ingest", headers=_AUTH,
+                           json={"host": "slow-agent", "lines": [_line()]})
+            second = c.post("/ingest", headers=_AUTH,
+                            json={"host": "slow-agent", "lines": [_line()]})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.get_json()["violations_detected"] >= 1
