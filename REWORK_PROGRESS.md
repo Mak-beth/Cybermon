@@ -624,6 +624,104 @@ Group 4 — Dark/Light theme system:
 
 ---
 
+### Phase R11 — Hardening and Evaluation
+**Status:** Complete (R11-A through R11-E)
+**Date Started:** 2026-06-10
+**Date Completed:** 2026-06-10
+
+#### Part R11-A: Ingest Endpoint Auth
+**Status:** Complete
+**Tests added:** 10 (test_r11a_auth.py)
+**Tests passing:** 152 / 152 at end of part
+**What was built:** X-API-Key shared-secret header check before any body
+processing (401 on missing/wrong/empty key); 2MB Content-Length cap and
+5000-line batch cap (413); host identifier validated against ^[\w\.\-]{1,64}$
+(400). Key loaded once at module import (tests override the module variable).
+Agent constructor takes api_key and sends the header on every POST;
+agent_main.py reads api_key from agent_config.yaml and warns when missing.
+RUNNING.md gained a "Network Mode Security" section documenting key rotation,
+the plaintext-HTTP limitation, and the trusted-host_id limitation.
+Existing endpoint/agent tests updated to authenticate (autouse fixture) and to
+accept the new headers kwarg in the fake requests.post.
+**Commit hash:** a88fcae
+
+#### Part R11-B: Stateful Failed-Login Detection
+**Status:** Complete
+**Tests added:** 8 (7 in test_r11b_stateful_detection.py + 1 integration)
+**Tests passing:** 160 / 160 at end of part
+**What was built:** detect_failed_logins_from_db() in
+src/detection/rules/failed_logins.py — counts FAILED events per
+(username, source_host) pair from the events table within the window
+(wall-clock anchored), fires at count >= threshold, suppresses duplicates by
+checking the violations table for the same pair/window. Raw sqlite3 (no
+storage imports). Wired into ingest_endpoint.py: failed_logins uses the DB
+query; unauthorized_access and off_hours stay batch-only (self-contained per
+event). Standalone path untouched.
+**Deviation:** the two pre-existing endpoint tests posted log lines hardcoded
+to "May 28" — outside any wall-clock window. They now stamp lines with the
+current time. Threshold semantics in network mode are count >= threshold
+(the batch rule keeps its original strict > threshold).
+**Commit hash:** 7e6587a (see git log: "R11-B: stateful failed-login detection
+in network mode via DB query")
+
+#### Part R11-C: Config-Driven Scoring
+**Status:** Complete
+**Tests added:** 7 (test_r11c_config_scoring.py)
+**Tests passing:** 167 / 167 at end of part
+**What was built:** scoring.rules section in config.yaml and
+config_default.yaml (user/resource impact lists, likelihood bands, all
+default likelihood/impact values). rules.py rewritten: get_likelihood and
+get_impact take config; all hardcoded constants removed; fallback defaults
+with one-time stderr warning when scoring.rules is absent. scorer.py
+propagates config. Settings panel gained a "Risk Scoring Rules" card with
+three editable list fields that save back to config.yaml.
+test_scoring.py/test_r7.py call sites updated to pass a minimal config dict.
+**Commit hash:** see git log ("R11-C: config-driven scoring")
+
+#### Part R11-D: Detection Accuracy Fixes
+**Status:** Complete
+**Tests added:** 10 (2 watcher flood/cooldown, 4 prefix match, 1 config
+cleanup, 3 spray)
+**Tests passing:** 177 / 177 at end of part
+**What was built:**
+- D1: LogWatcher cooldown — at most one violation per (source_host, username)
+  per window; buffer keys changed from username to source_host:username.
+- D2: unauthorized_access prefix matching — /admin/login.php and /admin?page=1
+  now trigger; /administrator does not (query string stripped, trailing
+  slashes normalised).
+- D3: /var/www/html removed from restricted_resources in both configs.
+- D4: _detect_spray_by_ip — one IP targeting >= threshold distinct usernames
+  in the window emits a "Password spray" violation; suppressed when the same
+  IP already produced a per-username violation.
+**Commit hash:** 335ac13
+
+#### Part R11-E: Evaluation Artifacts
+**Status:** Complete
+**Benchmark results (scripts/benchmark.py, this machine, 2026-06-10):**
+  - Lines attempted: 4000 (SSH_2k.log 2000 + Apache_2k.log 2000)
+  - Lines parsed (events extracted): 664 (16.6% of lines; matches R0 exactly:
+    632 SSH + 32 Apache. R0's 100% figure is STRUCTURAL match — informational
+    lines that are not auth/access events are correctly skipped.)
+  - Pipeline time: 0.101 s
+  - Processing rate: ~6,569 events/second
+  - Violations detected: 14 failed_logins (R0 found 10; the 4 extra are
+    password sprays the R11-D rule now catches in the real SSH data)
+  - DB write time: 0.159 s; total incl. DB: 0.260 s
+  - DB size: 144.0 KB
+- test_r11e_accuracy.py: PASSING — 8/8 labelled violations detected (root
+  Critical 20, guest Low 4, 5x /admin High 15, alice off-hours Medium 6),
+  zero false positives on nobody/bob//about.
+- simulate.py four-tier check: PASS (scripts/tier_check.py). Fix applied: the
+  Low-tier username now carries a per-run suffix (guest_HHMMSS) because two
+  simulate runs within 10 minutes previously merged into 6 failures and
+  promoted the violation to Medium — confirmed live with the Jun 4 14:10/14:11
+  runs in logs/auth.log.
+**Test count at end of phase: 178 passing (142 + 36 new — matches the R11
+spec target exactly)**
+**Commit hash:** (R11-E commit)
+
+---
+
 ### Phase R10 — IR Update and GitHub Polish
 **Status:** Not started
 **Date Started:**

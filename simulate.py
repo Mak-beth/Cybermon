@@ -10,10 +10,18 @@ Run this script, then run `python main.py` to see all four tiers in the GUI.
 
 Tier   | Pattern                          | L | I | Score
 -------|----------------------------------|---|---|------
-Low      3 failed logins for guest        2   2    4
+Low      3 failed logins for guest_HHMMSS 2   2    4
 Medium   8 failed logins for hacker       3   2    6
 High     3 x GET /admin -> 403            3   5   15
 Critical 20 failed logins for admin       5   4   20
+
+The Low-tier username carries a per-run suffix (guest_HHMMSS): detection takes
+the MAX failure count in any window across the whole file, so two simulate runs
+within 10 minutes of each other would otherwise merge into 6 failures for
+'guest' and promote the violation to Medium — losing the Low tier entirely.
+A unique username per run keeps the Low count at exactly 3.
+The other tiers are immune: hacker doubling (16) stays Medium-banded via L=4,
+admin is already Critical-capped, and /admin 403s score per event.
 """
 import os
 import time
@@ -58,13 +66,14 @@ def main():
 
     pid_base = 2000
 
-    # Low (score 4): 3 failed logins for 'guest'
-    print(">> Low: 3 failed logins for guest")
+    # Low (score 4): 3 failed logins for a per-run unique guest user
+    low_user = f"guest_{datetime.now():%H%M%S}"
+    print(f">> Low: 3 failed logins for {low_user}")
     for i in range(3):
         now = datetime.now()
         line = (
             f"{_auth_ts(now)} server sshd[{pid_base + i}]: "
-            f"Failed password for guest from 10.0.0.51 port 22 ssh2"
+            f"Failed password for {low_user} from 10.0.0.51 port 22 ssh2"
         )
         append(AUTH_LOG, line)
         time.sleep(0.1)
