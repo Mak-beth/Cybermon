@@ -50,6 +50,31 @@ scoring:
     critical:
       min: 17
       max: 25
+  rules:
+    high_impact_users:
+    - root
+    - admin
+    high_impact_resources:
+    - /admin
+    - /.env
+    - /phpmyadmin
+    med_impact_resources:
+    - /config
+    - /wp-admin
+    failed_login_likelihood_bands:
+    # count <= max_count gets this likelihood; evaluated in order, first match wins
+    - { max_count: 5,     likelihood: 2 }
+    - { max_count: 9,     likelihood: 3 }
+    - { max_count: 19,    likelihood: 4 }
+    - { max_count: 99999, likelihood: 5 }   # catch-all
+    unauthorized_access_default_likelihood: 3
+    off_hours_default_likelihood: 2
+    off_hours_default_impact: 3
+    failed_login_high_user_impact: 4
+    failed_login_default_impact: 2
+    unauthorized_access_high_resource_impact: 5
+    unauthorized_access_med_resource_impact: 3
+    unauthorized_access_default_impact: 2
 storage:
   db_path: data/cybermon.db
 auth_log_path: logs/auth.log

@@ -20,6 +20,12 @@ import yaml
 
 from src.scoring.rules import get_likelihood, get_impact
 
+# Minimal config - no scoring.rules key, so fallback defaults apply (R11-C)
+_MIN_CONFIG = {"scoring": {"severity_tiers": {
+    "low": {"min": 1, "max": 4}, "medium": {"min": 5, "max": 9},
+    "high": {"min": 10, "max": 16}, "critical": {"min": 17, "max": 25},
+}}}
+
 
 def _v(vtype, username, resource, detail):
     return {
@@ -32,22 +38,22 @@ def _v(vtype, username, resource, detail):
 
 def test_simulate_critical_pattern_likelihood_5():
     v = _v("failed_logins", "admin", None, "20 failed logins in 10 min for user 'admin'")
-    assert get_likelihood(v) == 5
+    assert get_likelihood(v, _MIN_CONFIG) == 5
 
 
 def test_simulate_critical_pattern_impact_4():
     v = _v("failed_logins", "admin", None, "20 failed logins in 10 min for user 'admin'")
-    assert get_impact(v) == 4
+    assert get_impact(v, _MIN_CONFIG) == 4
 
 
 def test_simulate_low_pattern_score_is_4():
     v = _v("failed_logins", "guest", None, "3 failed logins in 10 min for user 'guest'")
-    assert get_likelihood(v) * get_impact(v) == 4
+    assert get_likelihood(v, _MIN_CONFIG) * get_impact(v, _MIN_CONFIG) == 4
 
 
 def test_simulate_high_pattern_score_is_15():
     v = _v("unauthorized_access", None, "/admin", "HTTP 403")
-    assert get_likelihood(v) * get_impact(v) == 15
+    assert get_likelihood(v, _MIN_CONFIG) * get_impact(v, _MIN_CONFIG) == 15
 
 
 def test_all_four_tiers_in_config_bounds():

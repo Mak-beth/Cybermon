@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -54,7 +55,7 @@ def _make_style(palette: dict) -> str:
         font-weight: bold;
         letter-spacing: 0.5px;
     }}
-    QLineEdit, QSpinBox, QTimeEdit, QComboBox {{
+    QLineEdit, QSpinBox, QTimeEdit, QComboBox, QPlainTextEdit {{
         border: 1px solid {bdr};
         border-radius: 4px;
         padding: 5px 8px;
@@ -62,7 +63,8 @@ def _make_style(palette: dict) -> str:
         color: {text};
         font-size: 13px;
     }}
-    QLineEdit:focus, QSpinBox:focus, QTimeEdit:focus, QComboBox:focus {{
+    QLineEdit:focus, QSpinBox:focus, QTimeEdit:focus, QComboBox:focus,
+    QPlainTextEdit:focus {{
         border-color: {_PURPLE};
     }}
     QSpinBox::up-button, QTimeEdit::up-button {{
@@ -257,6 +259,40 @@ class SettingsPanel(QWidget):
         thresh_layout.addLayout(thresh_row)
         layout.addWidget(thresh_card)
 
+        # Risk scoring rules card (R11-C)
+        scoring_rules = cfg.get("scoring", {}).get("rules", {})
+        scoring_card = self._card()
+        scoring_layout = scoring_card.layout()
+        scoring_layout.addWidget(_section("RISK SCORING RULES", p))
+
+        def _list_field(label_text: str, values: list) -> QPlainTextEdit:
+            row_lbl = QLabel(label_text)
+            scoring_layout.addWidget(row_lbl)
+            field = QPlainTextEdit()
+            field.setPlainText(", ".join(values))
+            field.setFixedHeight(52)
+            scoring_layout.addWidget(field)
+            return field
+
+        self._high_users_input = _list_field(
+            "High-impact users (comma-separated):",
+            scoring_rules.get("high_impact_users", ["root", "admin"]),
+        )
+        self._high_resources_input = _list_field(
+            "High-impact resources (one per line or comma-separated):",
+            scoring_rules.get("high_impact_resources",
+                              ["/admin", "/.env", "/phpmyadmin"]),
+        )
+        self._med_resources_input = _list_field(
+            "Medium-impact resources:",
+            scoring_rules.get("med_impact_resources", ["/config", "/wp-admin"]),
+        )
+
+        note = QLabel("Changes take effect on the next pipeline run or log file scan.")
+        note.setStyleSheet(f"color: {p['text_secondary']}; font-size: 12px;")
+        scoring_layout.addWidget(note)
+        layout.addWidget(scoring_card)
+
         # Appearance card
         appear_card = self._card()
         appear_layout = appear_card.layout()
@@ -341,6 +377,17 @@ class SettingsPanel(QWidget):
         cfg["detection"]["off_hours_logins"]["business_days"] = [
             i for i, cb in enumerate(self._day_checks) if cb.isChecked()
         ]
+
+        # Risk scoring rules (R11-C) — parse comma- or newline-separated lists
+        def _parse_list(field: QPlainTextEdit) -> list[str]:
+            raw = field.toPlainText().replace("\n", ",")
+            return [item.strip() for item in raw.split(",") if item.strip()]
+
+        cfg.setdefault("scoring", {})
+        cfg["scoring"].setdefault("rules", {})
+        cfg["scoring"]["rules"]["high_impact_users"]     = _parse_list(self._high_users_input)
+        cfg["scoring"]["rules"]["high_impact_resources"] = _parse_list(self._high_resources_input)
+        cfg["scoring"]["rules"]["med_impact_resources"]  = _parse_list(self._med_resources_input)
 
         # Theme preference
         new_theme_name = self._theme_combo.currentText().lower()

@@ -1,12 +1,12 @@
 from src.scoring.rules import get_likelihood, get_impact
 
 
-def calculate_likelihood(violation: dict) -> int:
-    return get_likelihood(violation)
+def calculate_likelihood(violation: dict, config: dict) -> int:
+    return get_likelihood(violation, config)
 
 
-def calculate_impact(violation: dict) -> int:
-    return get_impact(violation)
+def calculate_impact(violation: dict, config: dict) -> int:
+    return get_impact(violation, config)
 
 
 def calculate_score(likelihood: int, impact: int) -> int:
@@ -22,8 +22,8 @@ def assign_severity(score: int, config: dict) -> str:
 
 
 def score_violation(violation: dict, config: dict) -> dict:
-    likelihood = calculate_likelihood(violation)
-    impact = calculate_impact(violation)
+    likelihood = calculate_likelihood(violation, config)
+    impact = calculate_impact(violation, config)
     risk_score = calculate_score(likelihood, impact)
     severity = assign_severity(risk_score, config)
     return {

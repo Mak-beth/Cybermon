@@ -1,4 +1,4 @@
-import copy
+﻿import copy
 import pytest
 import yaml
 from datetime import datetime
@@ -8,6 +8,13 @@ from src.scoring.scorer import (
     calculate_score, assign_severity,
     score_violation, score_all_violations,
 )
+
+# Minimal config for direct rule calls - no scoring.rules key, so the
+# built-in fallback defaults apply (R11-C).
+_MIN_CONFIG = {"scoring": {"severity_tiers": {
+    "low": {"min": 1, "max": 4}, "medium": {"min": 5, "max": 9},
+    "high": {"min": 10, "max": 16}, "critical": {"min": 17, "max": 25},
+}}}
 
 
 @pytest.fixture
@@ -91,45 +98,45 @@ def v_off_hours():
 # --- likelihood ---
 
 def test_likelihood_failed_logins_count_3(v_failed_testuser):
-    assert get_likelihood(v_failed_testuser) == 2
+    assert get_likelihood(v_failed_testuser, _MIN_CONFIG) == 2
 
 
 def test_likelihood_failed_logins_count_8(v_failed_admin):
-    assert get_likelihood(v_failed_admin) == 3
+    assert get_likelihood(v_failed_admin, _MIN_CONFIG) == 3
 
 
 def test_likelihood_unauthorized_access(v_unauth_admin):
-    assert get_likelihood(v_unauth_admin) == 3
+    assert get_likelihood(v_unauth_admin, _MIN_CONFIG) == 3
 
 
 def test_likelihood_off_hours(v_off_hours):
-    assert get_likelihood(v_off_hours) == 2
+    assert get_likelihood(v_off_hours, _MIN_CONFIG) == 2
 
 
 # --- impact ---
 
 def test_impact_failed_logins_admin(v_failed_admin):
-    assert get_impact(v_failed_admin) == 4
+    assert get_impact(v_failed_admin, _MIN_CONFIG) == 4
 
 
 def test_impact_failed_logins_standard_user(v_failed_testuser):
-    assert get_impact(v_failed_testuser) == 2
+    assert get_impact(v_failed_testuser, _MIN_CONFIG) == 2
 
 
 def test_impact_unauth_admin_resource(v_unauth_admin):
-    assert get_impact(v_unauth_admin) == 5
+    assert get_impact(v_unauth_admin, _MIN_CONFIG) == 5
 
 
 def test_impact_unauth_config_resource(v_unauth_config):
-    assert get_impact(v_unauth_config) == 3
+    assert get_impact(v_unauth_config, _MIN_CONFIG) == 3
 
 
 def test_impact_unauth_env_resource(v_unauth_env):
-    assert get_impact(v_unauth_env) == 5
+    assert get_impact(v_unauth_env, _MIN_CONFIG) == 5
 
 
 def test_impact_off_hours(v_off_hours):
-    assert get_impact(v_off_hours) == 3
+    assert get_impact(v_off_hours, _MIN_CONFIG) == 3
 
 
 # --- calculate_score ---
