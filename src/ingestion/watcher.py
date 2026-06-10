@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from src.ingestion.parser import parse_auth_log_line, parse_access_log_line
 from src.ingestion.preprocessor import normalize_event
@@ -53,7 +53,12 @@ class LogWatcher:
     def __init__(self, config: dict) -> None:
         self._config = config
         self._stop = threading.Event()
+        # Keyed by "source_host:username" so the same username on two hosts
+        # is never pooled into one count.
         self._failed_buffer: dict[str, deque] = {}
+        # Last violation emission time per key — suppresses alert flooding:
+        # a 100-attempt brute force is one violation, not ~98.
+        self._violation_cooldown: dict[str, datetime] = {}
         self._lock = threading.Lock()
         self._threads: list[threading.Thread] = []
 
@@ -104,25 +109,32 @@ class LogWatcher:
         threshold = cfg["threshold"]
         window = timedelta(minutes=cfg["time_window_minutes"])
         username = event["username"]
+        source_host = event.get("source_host", "")
         ts = event["timestamp"]
+        key = f"{source_host}:{username}"
 
         with self._lock:
-            buf = self._failed_buffer.setdefault(username, deque())
+            buf = self._failed_buffer.setdefault(key, deque())
             buf.append(ts)
             while buf and ts - buf[0] > window:
                 buf.popleft()
             count = len(buf)
 
-        if count > threshold:
-            return [{
-                "violation_type": "failed_logins",
-                "timestamp": ts,
-                "username": username,
-                "source_ip": event["source_ip"],
-                "resource": event["resource"],
-                "detail": (
-                    f"{count} failed logins in "
-                    f"{int(window.total_seconds() // 60)} minutes"
-                ),
-            }]
+            if count > threshold:
+                last_emitted = self._violation_cooldown.get(key)
+                if last_emitted and ts - last_emitted < window:
+                    return []   # already reported this burst; suppress duplicate
+                self._violation_cooldown[key] = ts
+                return [{
+                    "violation_type": "failed_logins",
+                    "timestamp": ts,
+                    "username": username,
+                    "source_host": source_host,
+                    "source_ip": event.get("source_ip"),
+                    "resource": None,
+                    "detail": (
+                        f"{count} failed logins in "
+                        f"{cfg['time_window_minutes']} min for user '{username}'"
+                    ),
+                }]
         return []

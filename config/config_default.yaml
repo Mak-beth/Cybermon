@@ -23,7 +23,6 @@ detection:
     - /phpmyadmin
     - /config
     - /.env
-    - /var/www/html
     trigger_codes:
     - 403
     - 401

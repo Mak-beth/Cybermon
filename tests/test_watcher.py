@@ -219,6 +219,63 @@ def test_logwatcher_does_not_crash_if_file_missing(tmp_path, config):
     watcher.stop()
 
 
+def test_alert_flood_suppressed_within_window(config):
+    """20 consecutive FAILED events for one user emit exactly ONE violation.
+
+    Drives _check_failed_logins directly (no threads) for determinism: the
+    cooldown must swallow every emission after the first within the window.
+    """
+    from datetime import datetime, timedelta
+
+    cfg = {**config, "detection": {**config["detection"],
+           "failed_logins": {"threshold": 5, "time_window_minutes": 10}}}
+    watcher = LogWatcher(cfg)
+
+    base = datetime(2026, 5, 27, 10, 0, 0)
+    emitted = []
+    for i in range(20):
+        event = {
+            "timestamp": base + timedelta(seconds=i),
+            "username": "flooduser",
+            "source_ip": "10.0.0.1",
+            "source_host": "host-1",
+            "resource": None,
+            "status_code": "FAILED",
+        }
+        emitted.extend(watcher._check_failed_logins(event))
+
+    assert len(emitted) == 1
+
+
+def test_alert_emitted_again_after_window_expires(config):
+    """A second burst after the window expires produces a second violation."""
+    from datetime import datetime, timedelta
+
+    cfg = {**config, "detection": {**config["detection"],
+           "failed_logins": {"threshold": 5, "time_window_minutes": 10}}}
+    watcher = LogWatcher(cfg)
+
+    emitted = []
+
+    def _burst(start: "datetime") -> None:
+        for i in range(8):
+            event = {
+                "timestamp": start + timedelta(seconds=i),
+                "username": "repeatuser",
+                "source_ip": "10.0.0.1",
+                "source_host": "host-1",
+                "resource": None,
+                "status_code": "FAILED",
+            }
+            emitted.extend(watcher._check_failed_logins(event))
+
+    first_burst = datetime(2026, 5, 27, 10, 0, 0)
+    _burst(first_burst)
+    _burst(first_burst + timedelta(minutes=15))   # past the 10-min window
+
+    assert len(emitted) == 2
+
+
 def test_logwatcher_on_violation_called_within_2s(tmp_path, config):
     auth_log = tmp_path / "auth.log"
     web_log = tmp_path / "web.log"

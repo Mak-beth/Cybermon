@@ -148,3 +148,105 @@ def test_off_hours_business_hours_login_not_flagged(config):
     }]
     violations = detect_off_hours_logins(inside, config)
     assert len(violations) == 0
+
+
+# --- R11-D2: prefix matching for restricted resources ---
+
+def _web_event(resource: str, status: str = "403"):
+    from datetime import datetime
+    return {
+        "timestamp": datetime(2026, 5, 27, 10, 0, 0),
+        "username": None,
+        "source_ip": "10.0.0.99",
+        "resource": resource,
+        "action": "http_request",
+        "status_code": status,
+    }
+
+
+_UNAUTH_CONFIG = {"detection": {"unauthorized_access": {
+    "restricted_resources": ["/admin", "/wp-admin", "/phpmyadmin", "/config", "/.env"],
+    "trigger_codes": [403, 401],
+}}}
+
+
+def test_restricted_subpath_detected():
+    violations = detect_unauthorized_access([_web_event("/admin/users")], _UNAUTH_CONFIG)
+    assert len(violations) == 1
+
+
+def test_restricted_query_string_detected():
+    violations = detect_unauthorized_access([_web_event("/admin?page=1")], _UNAUTH_CONFIG)
+    assert len(violations) == 1
+
+
+def test_exact_match_still_works():
+    violations = detect_unauthorized_access([_web_event("/admin")], _UNAUTH_CONFIG)
+    assert len(violations) == 1
+
+
+def test_non_restricted_similar_name():
+    """Prefix match, not substring — /administrator is a different path."""
+    violations = detect_unauthorized_access([_web_event("/administrator")], _UNAUTH_CONFIG)
+    assert len(violations) == 0
+
+
+# --- R11-D3: /var/www/html removed from default config ---
+
+def test_var_www_html_not_in_default_restricted_resources():
+    with open("config/config_default.yaml") as f:
+        default_cfg = yaml.safe_load(f)
+    restricted = default_cfg["detection"]["unauthorized_access"]["restricted_resources"]
+    assert "/var/www/html" not in restricted
+
+
+# --- R11-D4: password spray detection ---
+
+def _spray_event(username: str, ip: str, second: int):
+    from datetime import datetime
+    return {
+        "timestamp": datetime(2026, 5, 27, 10, 0, second),
+        "username": username,
+        "source_ip": ip,
+        "resource": None,
+        "action": "ssh_login",
+        "status_code": "FAILED",
+    }
+
+
+def _spray_config(threshold: int = 3) -> dict:
+    return {"detection": {"failed_logins": {
+        "threshold": threshold,
+        "time_window_minutes": 10,
+    }}}
+
+
+def test_spray_across_multiple_usernames_detected():
+    events = [
+        _spray_event(f"user{i}", "66.66.66.66", second=i) for i in range(5)
+    ]
+    violations = detect_failed_logins(events, _spray_config(threshold=3))
+    assert len(violations) == 1
+    assert violations[0]["violation_type"] == "failed_logins"
+    assert "spray" in violations[0]["detail"].lower()
+    assert violations[0]["source_ip"] == "66.66.66.66"
+
+
+def test_spray_below_threshold_not_detected():
+    events = [
+        _spray_event("user1", "66.66.66.66", second=0),
+        _spray_event("user2", "66.66.66.66", second=1),
+    ]
+    violations = detect_failed_logins(events, _spray_config(threshold=3))
+    assert len(violations) == 0
+
+
+def test_spray_does_not_double_count_with_brute_force():
+    """5 fails each on two usernames from one IP: two brute-force violations,
+    no third spray entry for the same IP."""
+    events = (
+        [_spray_event("victim-a", "66.66.66.66", second=i) for i in range(5)] +
+        [_spray_event("victim-b", "66.66.66.66", second=10 + i) for i in range(5)]
+    )
+    violations = detect_failed_logins(events, _spray_config(threshold=3))
+    assert len(violations) <= 2

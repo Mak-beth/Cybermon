@@ -1,3 +1,19 @@
+def _matches_restricted(resource: str, restricted: set) -> bool:
+    """Return True if resource starts with any restricted prefix.
+
+    Prefix match (not substring): /admin matches /admin, /admin/, and
+    /admin/login.php, but /administrator does not.  Query strings are
+    stripped before matching so /admin?page=1 is caught too.
+    """
+    path = resource.split("?")[0]
+    path = path.rstrip("/") or "/"
+    for prefix in restricted:
+        clean_prefix = prefix.rstrip("/")
+        if path == clean_prefix or path.startswith(clean_prefix + "/"):
+            return True
+    return False
+
+
 def detect_unauthorized_access(events: list[dict], config: dict) -> list[dict]:
     cfg = config["detection"]["unauthorized_access"]
     restricted = set(cfg["restricted_resources"])
@@ -6,7 +22,7 @@ def detect_unauthorized_access(events: list[dict], config: dict) -> list[dict]:
     violations = []
     for event in events:
         if (str(event.get("status_code", "")) in trigger_codes
-                and event.get("resource") in restricted):
+                and _matches_restricted(event.get("resource") or "", restricted)):
             violations.append({
                 "violation_type": "unauthorized_access",
                 "timestamp": event["timestamp"],

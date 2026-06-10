@@ -48,6 +48,55 @@ def detect_failed_logins(events: list[dict], config: dict) -> list[dict]:
                 "detail": f"{max_count} failed logins in {window_minutes} min for user '{username}'",
             })
 
+    # Password spray pass (T1110.003): one IP, many usernames.  Skip IPs that
+    # already produced a per-username violation so a brute force on two
+    # accounts from one IP is not reported a third time as a spray.
+    spray_violations = _detect_spray_by_ip(df, threshold, window)
+    existing_ips = {v.get("source_ip") for v in violations}
+    for sv in spray_violations:
+        if sv["source_ip"] not in existing_ips:
+            violations.append(sv)
+
+    return violations
+
+
+def _detect_spray_by_ip(df: pd.DataFrame, threshold: int, window: pd.Timedelta) -> list[dict]:
+    """Detect password spraying: one source IP targeting many distinct usernames.
+
+    Threshold is reused as the minimum number of distinct usernames from one
+    IP within the window to constitute a spray.
+    """
+    violations = []
+    for source_ip, group in df.groupby("source_ip"):
+        if pd.isna(source_ip) or source_ip == "":
+            continue
+        group = group.sort_values("timestamp").reset_index(drop=True)
+        timestamps = group["timestamp"].tolist()
+        usernames  = group["username"].tolist()
+
+        left = 0
+        max_distinct = 0
+        max_left = 0
+        for right in range(len(timestamps)):
+            while timestamps[right] - timestamps[left] > window:
+                left += 1
+            distinct = len(set(usernames[left:right + 1]))
+            if distinct > max_distinct:
+                max_distinct = distinct
+                max_left = left
+
+        if max_distinct >= threshold:
+            violations.append({
+                "violation_type": "failed_logins",
+                "timestamp": timestamps[max_left].to_pydatetime(),
+                "username": None,                 # no single target username
+                "source_ip": source_ip,
+                "resource": None,
+                "detail": (
+                    f"Password spray: {max_distinct} distinct usernames "
+                    f"targeted from {source_ip} within {window.seconds // 60} min"
+                ),
+            })
     return violations
 
 
