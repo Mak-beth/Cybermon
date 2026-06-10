@@ -145,7 +145,27 @@ In the Violations panel, set the host filter if needed, then click **Export CSV*
 
 ---
 
-## 10. Configuration
+## 10. Network Mode Security
+
+The ingest endpoint authenticates agents with a shared API key. Every POST from an agent must carry an `X-API-Key` header that matches the server's configured key; requests without it are rejected with HTTP 401.
+
+**Changing the key (do this before any real deployment):**
+
+1. On the server machine, edit `server.api_key` in `config/config.yaml`.
+2. On each agent machine, edit `api_key` in `agent_config.yaml`.
+3. The two values must match exactly. Restart both sides after changing.
+
+The default value `CHANGE_ME_BEFORE_DEPLOY` is intentionally obvious — replace it with a long random string.
+
+**Known limitations:**
+
+- Traffic is plaintext HTTP. On untrusted networks, run the agent and server over a VPN or a dedicated management VLAN. TLS support is future work.
+- The host identifier sent by agents is validated (max 64 chars, alphanumeric/dot/hyphen/underscore) but trusted — a compromised agent machine can still misreport its `host_id`.
+- Request bodies are capped at 2MB and 5000 lines per batch to prevent flooding.
+
+---
+
+## 11. Configuration
 
 All thresholds and settings live in `config/config.yaml`. Changes take effect on the next pipeline run.
 
@@ -162,7 +182,7 @@ Settings can also be changed from the Settings panel inside the app without edit
 
 ---
 
-## 11. Running from source (developer mode)
+## 12. Running from source (developer mode)
 
 Point the pipeline at custom log files:
 

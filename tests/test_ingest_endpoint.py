@@ -6,7 +6,21 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+import server.ingest_endpoint as _ie
 from server.ingest_endpoint import ingest_app
+
+# All requests in this file authenticate with a known test key (R11-A).
+_TEST_KEY = "test-api-key"
+_AUTH = {"X-API-Key": _TEST_KEY}
+
+
+@pytest.fixture(autouse=True)
+def _set_api_key():
+    """Override the module-level expected key for every test in this file."""
+    old = _ie._EXPECTED_KEY
+    _ie._EXPECTED_KEY = _TEST_KEY
+    yield
+    _ie._EXPECTED_KEY = old
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +59,7 @@ def isolated_client(tmp_path, config):
 
 def test_empty_lines_returns_200(isolated_client):
     client, _ = isolated_client
-    resp = client.post("/ingest", json={"host": "agent-1", "lines": []})
+    resp = client.post("/ingest", headers=_AUTH, json={"host": "agent-1", "lines": []})
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["received"] == 0
@@ -55,7 +69,7 @@ def test_empty_lines_returns_200(isolated_client):
 def test_unparseable_lines_returns_200(isolated_client):
     """Lines that don't match any log format are silently skipped; 200 is still returned."""
     client, _ = isolated_client
-    resp = client.post("/ingest", json={"host": "agent-1", "lines": ["garbage line"]})
+    resp = client.post("/ingest", headers=_AUTH, json={"host": "agent-1", "lines": ["garbage line"]})
     assert resp.status_code == 200
     data = resp.get_json()
     assert "received" in data
@@ -65,7 +79,7 @@ def test_unparseable_lines_returns_200(isolated_client):
 def test_received_count_matches_lines_sent(isolated_client):
     client, _ = isolated_client
     lines = ["garbage line 1", "garbage line 2", "garbage line 3"]
-    resp = client.post("/ingest", json={"host": "agent-1", "lines": lines})
+    resp = client.post("/ingest", headers=_AUTH, json={"host": "agent-1", "lines": lines})
     assert resp.status_code == 200
     assert resp.get_json()["received"] == 3
 
@@ -75,27 +89,27 @@ def test_received_count_matches_lines_sent(isolated_client):
 # ---------------------------------------------------------------------------
 
 def test_missing_host_returns_400(client):
-    resp = client.post("/ingest", json={"lines": ["some line"]})
+    resp = client.post("/ingest", headers=_AUTH, json={"lines": ["some line"]})
     assert resp.status_code == 400
 
 
 def test_missing_lines_returns_400(client):
-    resp = client.post("/ingest", json={"host": "agent-1"})
+    resp = client.post("/ingest", headers=_AUTH, json={"host": "agent-1"})
     assert resp.status_code == 400
 
 
 def test_not_json_returns_400(client):
-    resp = client.post("/ingest", data="not json", content_type="text/plain")
+    resp = client.post("/ingest", headers=_AUTH, data="not json", content_type="text/plain")
     assert resp.status_code == 400
 
 
 def test_empty_body_returns_400(client):
-    resp = client.post("/ingest")
+    resp = client.post("/ingest", headers=_AUTH)
     assert resp.status_code == 400
 
 
 def test_lines_not_a_list_returns_400(client):
-    resp = client.post("/ingest", json={"host": "agent-1", "lines": "not a list"})
+    resp = client.post("/ingest", headers=_AUTH, json={"host": "agent-1", "lines": "not a list"})
     assert resp.status_code == 400
 
 
@@ -118,7 +132,7 @@ def test_source_host_stored_from_post_body(tmp_path, config):
     ingest_app.config["TESTING"] = True
     with patch("server.ingest_endpoint._load_config", return_value=patched):
         with ingest_app.test_client() as c:
-            resp = c.post("/ingest", json={"host": "remote-machine-X", "lines": lines})
+            resp = c.post("/ingest", headers=_AUTH, json={"host": "remote-machine-X", "lines": lines})
 
     assert resp.status_code == 200
     data = resp.get_json()
@@ -145,7 +159,7 @@ def test_events_source_host_matches_post_body(tmp_path, config):
     ingest_app.config["TESTING"] = True
     with patch("server.ingest_endpoint._load_config", return_value=patched):
         with ingest_app.test_client() as c:
-            c.post("/ingest", json={"host": "agent-box-7", "lines": lines})
+            c.post("/ingest", headers=_AUTH, json={"host": "agent-box-7", "lines": lines})
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -174,7 +188,7 @@ def test_pipeline_end_to_end_post_to_stored_violation(tmp_path, config):
     ingest_app.config["TESTING"] = True
     with patch("server.ingest_endpoint._load_config", return_value=patched):
         with ingest_app.test_client() as c:
-            resp = c.post("/ingest", json={"host": "attacker-target", "lines": lines})
+            resp = c.post("/ingest", headers=_AUTH, json={"host": "attacker-target", "lines": lines})
 
     assert resp.status_code == 200
     body = resp.get_json()
@@ -205,7 +219,7 @@ def test_pipeline_web_line_end_to_end(tmp_path, config):
     ingest_app.config["TESTING"] = True
     with patch("server.ingest_endpoint._load_config", return_value=patched):
         with ingest_app.test_client() as c:
-            resp = c.post("/ingest", json={"host": "web-agent", "lines": lines})
+            resp = c.post("/ingest", headers=_AUTH, json={"host": "web-agent", "lines": lines})
 
     assert resp.status_code == 200
     data = resp.get_json()

@@ -51,6 +51,7 @@ _DEFAULTS = {
     "server_port":          5001,
     "log_path":             "logs/auth.log",
     "host_id":              "agent-machine-1",
+    "api_key":              "CHANGE_ME_BEFORE_DEPLOY",
     "retry_attempts":       3,
     "retry_delay_seconds":  2,
 }
@@ -84,12 +85,18 @@ if __name__ == "__main__":
     server_port = int(cfg.get("server_port",      _DEFAULTS["server_port"]))
     log_path    = cfg.get("log_path",             _DEFAULTS["log_path"])
     host_id     = cfg.get("host_id",              _DEFAULTS["host_id"])
+    api_key     = cfg.get("api_key",              "")
+
+    if not api_key:
+        print("[CyberMonAgent] WARNING: no api_key configured — server will reject requests.")
+        print("Edit agent_config.yaml and set api_key to match the server's api_key.")
 
     agent = CyberMonAgent(
         server_ip=server_ip,
         server_port=server_port,
         log_path=log_path,
         host_id=host_id,
+        api_key=api_key,
         retry_attempts=int(cfg.get("retry_attempts",      _DEFAULTS["retry_attempts"])),
         retry_delay_seconds=int(cfg.get("retry_delay_seconds", _DEFAULTS["retry_delay_seconds"])),
     )

@@ -20,12 +20,14 @@ class CyberMonAgent:
         server_port: int,
         log_path: str,
         host_id: str,
+        api_key: str = "",
         retry_attempts: int = 3,
         retry_delay_seconds: int = 2,
     ) -> None:
         self.url = f"http://{server_ip}:{server_port}/ingest"
         self.log_path = log_path
         self.host_id = host_id
+        self.api_key = api_key
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay_seconds
         self._running = False
@@ -37,9 +39,10 @@ class CyberMonAgent:
     def _post_lines(self, lines: list) -> bool:
         """POST lines to the ingest endpoint.  Returns True on success."""
         payload = {"host": self.host_id, "lines": lines}
+        headers = {"X-API-Key": self.api_key, "Content-Type": "application/json"}
         for attempt in range(1, self.retry_attempts + 1):
             try:
-                resp = requests.post(self.url, json=payload, timeout=5)
+                resp = requests.post(self.url, json=payload, headers=headers, timeout=5)
                 if resp.status_code == 200:
                     logger.info(
                         "Sent %d line(s) to %s — server: %s",

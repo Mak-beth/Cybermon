@@ -153,7 +153,7 @@ def test_agent_picks_up_new_lines_from_file(tmp_path):
     received_payloads = []
     done = threading.Event()
 
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None):
         received_payloads.append(json)
         if len(received_payloads) >= 1:
             done.set()

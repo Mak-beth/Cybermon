@@ -7,6 +7,7 @@ This separation ensures the ingest server survives independently when the
 dashboard is replaced in R3 with a PyQt6 GUI.
 """
 import os
+import re
 
 import yaml
 from flask import Flask, jsonify, request
@@ -31,6 +32,22 @@ def _load_config() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Security — shared API key, payload limits, host identifier validation
+# ---------------------------------------------------------------------------
+
+# Loaded once at import; config load on every request is too slow.
+# Tests override this module-level variable directly.
+try:
+    _EXPECTED_KEY = _load_config().get("server", {}).get("api_key", "")
+except (OSError, yaml.YAMLError):
+    _EXPECTED_KEY = ""
+
+_MAX_BODY_BYTES = 2 * 1024 * 1024   # 2MB request body cap
+_MAX_BATCH_LINES = 5000             # max lines per POST
+_HOST_RE = re.compile(r'^[\w\.\-]{1,64}$')
+
+
+# ---------------------------------------------------------------------------
 # Route
 # ---------------------------------------------------------------------------
 
@@ -46,8 +63,19 @@ def ingest():
 
         {"received": N, "violations_detected": M}
 
-    Returns HTTP 400 if the body is missing, not JSON, or lacks required keys.
+    Returns HTTP 401 if the X-API-Key header is missing or wrong,
+    HTTP 413 if the payload exceeds size limits, and
+    HTTP 400 if the body is missing, not JSON, or lacks required keys.
     """
+    # --- Authentication — checked before any body processing ---
+    received_key = request.headers.get("X-API-Key", "")
+    if not received_key or received_key != _EXPECTED_KEY:
+        return jsonify({"error": "unauthorized"}), 401
+
+    # --- Payload size cap (before JSON parse) ---
+    if request.content_length and request.content_length > _MAX_BODY_BYTES:
+        return jsonify({"error": "payload too large"}), 413
+
     body = request.get_json(silent=True)
 
     # --- Validation ---
@@ -57,8 +85,15 @@ def ingest():
         return jsonify({"error": "'host' and 'lines' are required"}), 400
     if not isinstance(body["lines"], list):
         return jsonify({"error": "'lines' must be a list"}), 400
+    if len(body["lines"]) > _MAX_BATCH_LINES:
+        return jsonify(
+            {"error": f"batch too large — max {_MAX_BATCH_LINES} lines per request"}
+        ), 413
 
     host = str(body["host"])
+    if not _HOST_RE.match(host):
+        return jsonify({"error": "invalid host identifier"}), 400
+
     lines = body["lines"]
 
     if not lines:
