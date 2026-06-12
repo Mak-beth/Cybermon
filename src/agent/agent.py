@@ -50,6 +50,14 @@ class CyberMonAgent:
                     )
                     print(f"[CyberMonAgent] Sent {len(lines)} line(s) — {resp.json()}")
                     return True
+                if resp.status_code == 401:
+                    logger.error("Server rejected API key (HTTP 401) — not retrying.")
+                    print(
+                        "[CyberMonAgent] FATAL: server rejected API key. "
+                        "Check that 'api_key' in agent_config.yaml matches the "
+                        "server's server.api_key. Not retrying."
+                    )
+                    return False
                 logger.warning(
                     "Server returned HTTP %d (attempt %d/%d)",
                     resp.status_code, attempt, self.retry_attempts,

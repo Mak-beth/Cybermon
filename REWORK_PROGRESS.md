@@ -717,7 +717,19 @@ cleanup, 3 spray)
   runs in logs/auth.log.
 **Test count at end of phase: 178 passing (142 + 36 new — matches the R11
 spec target exactly)**
-**Commit hash:** (R11-E commit)
+**Commit hash:** f3a9e5a
+
+#### Part R11-F: Agent 401 Fast-Fail
+**Status:** Complete
+**Tests added:** 1 (test_agent_401_does_not_retry)
+**Tests passing:** 179 / 179
+**What was built:** _post_lines in src/agent/agent.py gained a fast-fail branch
+for HTTP 401 — it logs/prints a FATAL message naming agent_config.yaml and the
+api_key field, then returns False immediately without consuming retry attempts.
+A wrong key was the single most likely network-UAT setup mistake and previously
+burned all 3 retries with three identical generic messages. The 200 success
+path and the RequestException retry path are unchanged.
+**Commit hash:** (this commit)
 
 ---
 

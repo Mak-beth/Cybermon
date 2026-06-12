@@ -126,6 +126,39 @@ def test_retry_succeeds_on_second_attempt(tmp_path):
     assert mock_post.call_count == 2
 
 
+def test_agent_401_does_not_retry(monkeypatch):
+    """A 401 must fail immediately without consuming retry attempts."""
+    call_count = {"n": 0}
+
+    class _Resp:
+        status_code = 401
+        def json(self):
+            return {"error": "unauthorized"}
+
+    def _fake_post(*args, **kwargs):
+        call_count["n"] += 1
+        return _Resp()
+
+    monkeypatch.setattr("requests.post", _fake_post)
+
+    agent = CyberMonAgent(
+        server_ip="127.0.0.1",
+        server_port=5001,
+        log_path="dummy.log",
+        host_id="host1",
+        api_key="wrong-key",
+        retry_attempts=3,
+        retry_delay_seconds=0,
+    )
+    result = agent._post_lines(["some log line"])
+
+    assert result is False
+    assert call_count["n"] == 1, (
+        "Agent must POST exactly once on 401, not retry. "
+        f"Got {call_count['n']} calls."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Missing log file
 # ---------------------------------------------------------------------------
