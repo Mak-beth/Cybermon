@@ -7,6 +7,7 @@ The agent runs with a visible console window so the user can see status output:
   - One startup line showing the log file and server address
   - One line per batch of lines sent to the server
 """
+import argparse
 import logging
 import os
 import sys
@@ -44,7 +45,7 @@ logging.basicConfig(
 # Config — lives next to the exe, created from defaults on first run
 # ---------------------------------------------------------------------------
 
-CONFIG_FILE = os.path.join(_exe_dir(), "agent_config.yaml")
+DEFAULT_CONFIG_FILE = os.path.join(_exe_dir(), "agent_config.yaml")
 
 _DEFAULTS = {
     "server_ip":            "127.0.0.1",
@@ -57,13 +58,13 @@ _DEFAULTS = {
 }
 
 
-def _load_or_create_config() -> dict:
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "w", encoding="utf-8") as fh:
+def _load_or_create_config(config_file: str) -> dict:
+    if not os.path.exists(config_file):
+        with open(config_file, "w", encoding="utf-8") as fh:
             yaml.dump(_DEFAULTS, fh, default_flow_style=False)
-        print(f"[CyberMonAgent] Created default config at {CONFIG_FILE}")
+        print(f"[CyberMonAgent] Created default config at {config_file}")
         print("[CyberMonAgent] Edit server_ip, log_path, and host_id, then restart.")
-    with open(CONFIG_FILE, encoding="utf-8") as fh:
+    with open(config_file, encoding="utf-8") as fh:
         return yaml.safe_load(fh)
 
 
@@ -72,7 +73,18 @@ def _load_or_create_config() -> dict:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    cfg = _load_or_create_config()
+    parser = argparse.ArgumentParser(
+        description="CyberMonAgent — tails a log file and POSTs new lines to the ingest server."
+    )
+    parser.add_argument(
+        "--config",
+        default=DEFAULT_CONFIG_FILE,
+        help="Path to the agent config YAML (default: agent_config.yaml next to the exe). "
+             "Give each agent its own config file to run several at once — e.g. to "
+             "simulate multiple hosts from one machine.",
+    )
+    args = parser.parse_args()
+    cfg = _load_or_create_config(args.config)
 
     # Ensure src/ is on the path when running from source
     _here = os.path.dirname(os.path.abspath(__file__))
