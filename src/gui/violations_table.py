@@ -8,7 +8,7 @@ empty state when the database contains no violations.
 import csv
 from datetime import date
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -66,11 +66,25 @@ _CSV_COLUMNS = [
 class ViolationsTable(QWidget):
     """Panel showing all violations sorted by risk score descending."""
 
+    # Auto-refresh cadence — matches the Overview / Live Feed polling pattern.
+    _REFRESH_INTERVAL = 5_000   # 5 s
+
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self._config = config
+        # Default sort is newest-first; preserved across auto-refreshes and
+        # updated whenever the user clicks a column header.
+        self._sort_col = _COL_TIMESTAMP
+        self._sort_order = Qt.SortOrder.DescendingOrder
+        self._reloading = False   # guard: ignore programmatic sort signals
         self._build_ui()
         self.refresh()
+
+        # Poll the database so new violations appear without a manual Refresh.
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._REFRESH_INTERVAL)
+        self._timer.timeout.connect(self.refresh)
+        self._timer.start()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -177,6 +191,7 @@ class ViolationsTable(QWidget):
         hdr.setSectionResizeMode(_COL_ACTION,    QHeaderView.ResizeMode.Stretch)
 
         self._table.itemClicked.connect(self._on_row_clicked)
+        self._table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
 
         # --- Empty state (shown when database has no violations) ---
         _empty = QWidget()
@@ -224,6 +239,7 @@ class ViolationsTable(QWidget):
         host = self._host_filter.currentText()
         host_arg = None if host == "All Hosts" else host
 
+        self._reloading = True
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
 
@@ -235,7 +251,9 @@ class ViolationsTable(QWidget):
             for row_idx, v in enumerate(rows):
                 self._set_row(row_idx, v)
             self._table.setSortingEnabled(True)
-            self._table.sortItems(_COL_SCORE, Qt.SortOrder.DescendingOrder)
+            # Reapply the current sort (default: Timestamp DESC, or whatever
+            # column the user last clicked) so auto-refresh doesn't disturb it.
+            self._table.sortItems(self._sort_col, self._sort_order)
             count = len(rows)
             self._status.setText(
                 f"{count} violation{'s' if count != 1 else ''} displayed"
@@ -244,6 +262,18 @@ class ViolationsTable(QWidget):
         else:
             self._content_stack.setCurrentIndex(1)
             self._status.setText("No violations in database.")
+
+        self._reloading = False
+
+    def _on_sort_changed(self, section: int, order: Qt.SortOrder) -> None:
+        """Record a user-initiated column sort so it survives auto-refresh.
+
+        Ignored while _reload_table is repopulating (that re-sort is our own).
+        """
+        if self._reloading:
+            return
+        self._sort_col = section
+        self._sort_order = order
 
     def _set_row(self, row: int, v: dict) -> None:
         severity = v.get("severity", "")

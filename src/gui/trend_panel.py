@@ -7,6 +7,7 @@ Off-Hours Logins (amber).
 import pyqtgraph as pg
 from pyqtgraph import mkPen
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -58,11 +59,21 @@ def _make_plot(title: str = "") -> pg.PlotWidget:
 class TrendPanel(QWidget):
     """Shows violation trends by hour (today) and by day (last 7 days)."""
 
+    # Auto-refresh cadence — matches the Overview / Live Feed polling pattern.
+    _REFRESH_INTERVAL = 5_000   # 5 s
+
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self._config = config
         self._build_ui()
         self.refresh()
+
+        # Poll so today's / this week's new violations appear without a manual
+        # Refresh. Reuses the existing trend queries as-is (no window change).
+        self._timer = QTimer(self)
+        self._timer.setInterval(self._REFRESH_INTERVAL)
+        self._timer.timeout.connect(self.refresh)
+        self._timer.start()
 
     # ------------------------------------------------------------------
     # UI construction

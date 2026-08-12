@@ -68,7 +68,7 @@ def _connect() -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 def get_all_violations(host_filter: str | None = None) -> list[dict]:
-    """Return all violations with scores, ordered by risk_score DESC.
+    """Return all violations with scores, ordered by timestamp DESC (newest first).
 
     Args:
         host_filter: If provided, return only violations whose source_host
@@ -91,7 +91,7 @@ def get_all_violations(host_filter: str | None = None) -> list[dict]:
             FROM violations v
             JOIN risk_scores r ON r.violation_id = v.id
             WHERE v.source_host = ?
-            ORDER BY r.risk_score DESC
+            ORDER BY v.timestamp DESC
         """, (host_filter,))
     else:
         cur.execute("""
@@ -100,7 +100,7 @@ def get_all_violations(host_filter: str | None = None) -> list[dict]:
                    r.likelihood, r.impact, r.risk_score, r.severity
             FROM violations v
             JOIN risk_scores r ON r.violation_id = v.id
-            ORDER BY r.risk_score DESC
+            ORDER BY v.timestamp DESC
         """)
 
     rows = []
