@@ -33,6 +33,7 @@ def db_path():
 
 @pytest.fixture
 def populated_db(db_path, config):
+    from datetime import datetime, timedelta
     from src.ingestion.preprocessor import preprocess_log_file
     from src.detection.detector import run_detection
     from src.scoring.scorer import score_all_violations
@@ -40,6 +41,21 @@ def populated_db(db_path, config):
     init_db(db_path)
     events = (preprocess_log_file("logs/samples/auth.log", "auth") +
               preprocess_log_file("logs/samples/access.log", "web"))
+
+    # The sample logs carry a fixed date, so once the run date is more than
+    # get_trend_data's 30-day window past it, the trend query sees nothing.
+    # Shift every event forward by whole weeks so the data lands within the
+    # last few days of now. Whole-week shifts preserve weekday and time-of-day,
+    # leaving off-hours / business-day detection (and thus every violation
+    # count) identical — only the calendar position moves.
+    if events:
+        latest = max(e["timestamp"] for e in events)
+        weeks = (datetime.now() - latest).days // 7
+        if weeks > 0:
+            shift = timedelta(weeks=weeks)
+            for e in events:
+                e["timestamp"] = e["timestamp"] + shift
+
     insert_events(events, db_path)
 
     violations = run_detection(events, config)

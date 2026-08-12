@@ -188,6 +188,20 @@ This appends synthetic log lines (all four severity tiers) to the configured log
 
 ---
 
+## Demo mode
+
+For a live presentation, run `scripts/demo_feed.py` in a second terminal alongside the app to simulate continuous traffic:
+
+```bat
+venv\Scripts\python.exe scripts\demo_feed.py
+```
+
+It replays **real** historical log lines from `logs/real/` into the live-monitored files (`logs/live/auth.log` and `logs/live/access.log`), rewriting each line's timestamp to the current time so the **Live Feed** and **Trend** panels show detection happening continuously. Press Ctrl+C to stop.
+
+The source files under `logs/real/` are opened read-only and never modified — the tool only appends to `logs/live/`. Start it after `python main.py` is already running (the watcher only picks up lines written after it starts). The app must be monitoring `logs/live/` for the fed lines to appear (this repo's default `config.yaml` already points `auth_log_path`/`web_log_path` there).
+
+---
+
 ## Running the agent (network mode)
 
 On each remote machine, run:
@@ -256,6 +270,7 @@ cybermon/
 │   └── make_icon.py            ← icon generation script (Qt + Pillow)
 ├── scripts/
 │   ├── benchmark.py            ← pipeline performance benchmark (real LogHub data)
+│   ├── demo_feed.py            ← presentation demo: replays real logs into logs/live/
 │   └── tier_check.py           ← verifies simulate.py produces all four tiers
 └── tests/                      ← 178 tests across 14 files
 ```

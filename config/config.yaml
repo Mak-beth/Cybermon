@@ -5,7 +5,7 @@ ui:
 server:
   host: 0.0.0.0
   port: 5001
-  api_key: "CHANGE_ME_BEFORE_DEPLOY"   # shared secret for agent->server auth
+  api_key: CHANGE_ME_BEFORE_DEPLOY
 agent:
   server_ip: 127.0.0.1
   server_port: 5001
@@ -62,11 +62,14 @@ scoring:
     - /config
     - /wp-admin
     failed_login_likelihood_bands:
-    # count <= max_count gets this likelihood; evaluated in order, first match wins
-    - { max_count: 5,     likelihood: 2 }
-    - { max_count: 9,     likelihood: 3 }
-    - { max_count: 19,    likelihood: 4 }
-    - { max_count: 99999, likelihood: 5 }   # catch-all
+    - max_count: 5
+      likelihood: 2
+    - max_count: 9
+      likelihood: 3
+    - max_count: 19
+      likelihood: 4
+    - max_count: 99999
+      likelihood: 5
     unauthorized_access_default_likelihood: 3
     off_hours_default_likelihood: 2
     off_hours_default_impact: 3
@@ -77,5 +80,5 @@ scoring:
     unauthorized_access_default_impact: 2
 storage:
   db_path: data/cybermon.db
-auth_log_path: logs/auth.log
-web_log_path: logs/access.log
+auth_log_path: logs/live/auth.log
+web_log_path: logs/live/access.log
