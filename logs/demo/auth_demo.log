@@ -1,0 +1,8 @@
+Oct 10 03:14:07 server sshd[4410]: Accepted password for alice from 203.0.113.30 port 52344 ssh2
+Oct 10 03:15:22 server sshd[4411]: Accepted password for bjones from 198.51.100.44 port 51002 ssh2
+Oct 10 03:16:40 server sshd[4412]: Accepted password for deploy from 192.0.2.61 port 49771 ssh2
+Oct 10 03:18:03 server sshd[4413]: Accepted password for svc_backup from 203.0.113.90 port 55210 ssh2
+Oct 10 03:19:55 server sshd[4414]: Accepted password for mchen from 198.51.100.7 port 40233 ssh2
+Oct 10 03:21:10 server sshd[4415]: Accepted password for oncall from 192.0.2.120 port 47788 ssh2
+Oct 10 03:22:48 server sshd[4416]: Accepted password for kpatel from 203.0.113.5 port 60011 ssh2
+Oct 10 03:24:31 server sshd[4417]: Accepted password for webops from 198.51.100.61 port 52890 ssh2
