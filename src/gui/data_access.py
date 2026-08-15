@@ -258,7 +258,7 @@ def get_trend_by_hour_today(host_filter: str | None = None) -> dict:
                    violation_type,
                    COUNT(*) AS cnt
             FROM violations
-            WHERE DATE(timestamp) = DATE('now')
+            WHERE DATE(timestamp) = DATE('now', 'localtime')
               AND source_host = ?
             GROUP BY hour, violation_type
         """, (host_filter,))
@@ -268,7 +268,7 @@ def get_trend_by_hour_today(host_filter: str | None = None) -> dict:
                    violation_type,
                    COUNT(*) AS cnt
             FROM violations
-            WHERE DATE(timestamp) = DATE('now')
+            WHERE DATE(timestamp) = DATE('now', 'localtime')
             GROUP BY hour, violation_type
         """)
 
@@ -368,7 +368,7 @@ def get_trend_by_day_week(host_filter: str | None = None) -> dict:
                    violation_type,
                    COUNT(*) AS cnt
             FROM violations
-            WHERE DATE(timestamp) >= DATE('now', '-6 days')
+            WHERE DATE(timestamp) >= DATE('now', 'localtime', '-6 days')
               AND source_host = ?
             GROUP BY day, violation_type
         """, (host_filter,))
@@ -378,7 +378,7 @@ def get_trend_by_day_week(host_filter: str | None = None) -> dict:
                    violation_type,
                    COUNT(*) AS cnt
             FROM violations
-            WHERE DATE(timestamp) >= DATE('now', '-6 days')
+            WHERE DATE(timestamp) >= DATE('now', 'localtime', '-6 days')
             GROUP BY day, violation_type
         """)
 

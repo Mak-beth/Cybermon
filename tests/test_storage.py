@@ -281,20 +281,23 @@ def test_get_trend_by_hour_today_captures_todays_violations(db_path):
     from datetime import datetime
 
     init_db(db_path)
-    now = datetime.now()
+    # Stamp a fixed hour on today's LOCAL date. get_trend_by_hour_today filters
+    # on DATE('now','localtime'), so this matches "today" at whatever hour the
+    # test runs (the old version used the UTC DATE('now') and failed during the
+    # local 00:00-08:00 window on UTC-ahead machines).
+    ts = datetime.now().replace(hour=13, minute=30, second=0, microsecond=0)
     conn = sqlite3.connect(db_path)
     conn.execute(
         "INSERT INTO violations "
         "(violation_type, timestamp, username, source_ip, resource, detail, source_host) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("unauthorized_access", now.isoformat(), None, "10.0.0.1", "/admin", "test", "localhost"),
+        ("unauthorized_access", ts.isoformat(), None, "10.0.0.1", "/admin", "test", "localhost"),
     )
     conn.commit()
     conn.close()
 
     result = get_trend_by_hour_today(db_path)
-    hour_idx = int(now.strftime("%H"))
-    assert result["unauthorized_access"][hour_idx] == 1
+    assert result["unauthorized_access"][13] == 1
 
 
 # --- get_trend_by_day_week ---

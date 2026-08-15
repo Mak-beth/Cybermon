@@ -65,7 +65,7 @@ def get_trend_by_hour_today(db_path: str) -> dict:
                violation_type,
                COUNT(*) AS count
         FROM violations
-        WHERE DATE(timestamp) = DATE('now')
+        WHERE DATE(timestamp) = DATE('now', 'localtime')
         GROUP BY hour, violation_type
     """)
     rows = cur.fetchall()
@@ -97,7 +97,7 @@ def get_trend_by_day_week(db_path: str) -> dict:
                violation_type,
                COUNT(*) AS count
         FROM violations
-        WHERE DATE(timestamp) >= DATE('now', '-6 days')
+        WHERE DATE(timestamp) >= DATE('now', 'localtime', '-6 days')
         GROUP BY day, violation_type
     """)
     rows = cur.fetchall()
@@ -125,7 +125,7 @@ def get_trend_data(db_path: str, days: int = 365) -> list[dict]:
     cur.execute("""
         SELECT DATE(timestamp) as date, COUNT(*) as count
         FROM violations
-        WHERE timestamp >= DATE('now', ?)
+        WHERE timestamp >= DATE('now', 'localtime', ?)
         GROUP BY DATE(timestamp)
         ORDER BY date
     """, (f"-{days} days",))
