@@ -302,3 +302,76 @@ def test_logwatcher_on_violation_called_within_2s(tmp_path, config):
     assert elapsed < 2.0
 
     watcher.stop()
+
+
+# ---------------------------------------------------------------------------
+# Windows OpenSSH format end-to-end (guards against the silent-swallow trap):
+# these exercise tail -> parser -> normalize_event -> detection -> on_violation.
+# ---------------------------------------------------------------------------
+
+def test_logwatcher_detects_windows_failed_login_burst(tmp_path, config):
+    auth_log = tmp_path / "auth.log"
+    web_log = tmp_path / "web.log"
+    auth_log.touch()
+    web_log.touch()
+
+    violations = []
+    got_violation = threading.Event()
+
+    def on_violation(v):
+        violations.append(v)
+        got_violation.set()
+
+    watcher = LogWatcher(config)
+    watcher.start(str(auth_log), str(web_log), on_violation)
+    time.sleep(0.2)
+
+    # Windows OpenSSH file-log format: "<pid> <ISO ts> <message>".
+    with open(str(auth_log), "a") as f:
+        for i in range(6):
+            f.write(
+                f"6376 2026-08-16 03:17:{28 + i:02d}.251 "
+                f"Failed password for winbrute from ::1 port 51785 ssh2\n"
+            )
+        f.flush()
+
+    got_violation.wait(timeout=3)
+    watcher.stop()
+
+    assert len(violations) >= 1
+    assert violations[0]["violation_type"] == "failed_logins"
+    assert violations[0]["username"] == "winbrute"
+
+
+def test_logwatcher_detects_windows_off_hours_login(tmp_path, config):
+    auth_log = tmp_path / "auth.log"
+    web_log = tmp_path / "web.log"
+    auth_log.touch()
+    web_log.touch()
+
+    violations = []
+    got_violation = threading.Event()
+
+    def on_violation(v):
+        violations.append(v)
+        got_violation.set()
+
+    watcher = LogWatcher(config)
+    watcher.start(str(auth_log), str(web_log), on_violation)
+    time.sleep(0.2)
+
+    # Windows-format success login at 03:17 — outside business hours.
+    with open(str(auth_log), "a") as f:
+        f.write(
+            "6376 2026-08-16 03:17:28.251 "
+            "Accepted password for winuser from 10.0.0.9 port 51790 ssh2\n"
+        )
+        f.flush()
+
+    got_violation.wait(timeout=3)
+    watcher.stop()
+
+    assert any(
+        v["violation_type"] == "off_hours_login" and v["username"] == "winuser"
+        for v in violations
+    )

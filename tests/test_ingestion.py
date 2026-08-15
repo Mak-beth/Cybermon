@@ -3,7 +3,7 @@ from datetime import datetime
 
 from src.ingestion.reader import read_log_file
 from src.ingestion.parser import parse_auth_log_line, parse_access_log_line
-from src.ingestion.preprocessor import preprocess_log_file
+from src.ingestion.preprocessor import preprocess_log_file, _parse_auth_timestamp
 
 SCHEMA_KEYS = {"timestamp", "username", "source_ip", "resource", "action", "status_code"}
 
@@ -104,6 +104,34 @@ def test_parse_auth_windows_dict_shape_matches_linux():
     lin = parse_auth_log_line(
         "May 27 09:10:01 server sshd[1001]: Failed password for admin from 192.168.1.100 port 22 ssh2")
     assert set(win.keys()) == set(lin.keys())
+
+
+# --- preprocessor: auth timestamp parsing (Linux + Windows OpenSSH) ---
+
+def test_parse_auth_timestamp_windows_with_millis():
+    dt = _parse_auth_timestamp("2026-08-16 03:17:28.251")
+    assert dt == datetime(2026, 8, 16, 3, 17, 28, 251000)
+
+
+def test_parse_auth_timestamp_windows_six_digit_millis():
+    dt = _parse_auth_timestamp("2026-08-16 03:17:28.123456")
+    assert dt == datetime(2026, 8, 16, 3, 17, 28, 123456)
+
+
+def test_parse_auth_timestamp_windows_without_millis():
+    dt = _parse_auth_timestamp("2026-08-16 03:17:28")
+    assert dt == datetime(2026, 8, 16, 3, 17, 28)
+
+
+def test_parse_auth_timestamp_linux_still_parses():
+    # Linux format omits the year; only month/day/time are known here.
+    dt = _parse_auth_timestamp("Aug 16 03:17:28")
+    assert (dt.month, dt.day, dt.hour, dt.minute, dt.second) == (8, 16, 3, 17, 28)
+
+
+def test_parse_auth_timestamp_unrecognised_raises_naming_string():
+    with pytest.raises(ValueError, match="not a timestamp"):
+        _parse_auth_timestamp("not a timestamp")
 
 
 # --- parser: access ---

@@ -35,11 +35,27 @@ def tail_file(
                 while not _should_stop():
                     line = f.readline()
                     if line:
-                        callback(line.rstrip("\n"), log_type)
+                        stripped = line.rstrip("\n")
+                        # Isolate per-line handling: one malformed line must not
+                        # break the read loop (which would reopen + re-seek to
+                        # end, dropping the tail position and intervening lines).
+                        try:
+                            callback(stripped, log_type)
+                        except Exception as exc:
+                            logging.warning(
+                                "tail_file: skipping unprocessable line in %s: %r (%s)",
+                                filepath, stripped, exc,
+                            )
                     else:
                         time.sleep(poll_interval)
         except FileNotFoundError:
             logging.warning("tail_file: %s not found, retrying in %.1fs", filepath, poll_interval)
+            time.sleep(poll_interval)
+        except PermissionError:
+            logging.error(
+                "tail_file: permission denied reading %s — is CyberMon running "
+                "as Administrator?", filepath,
+            )
             time.sleep(poll_interval)
         except Exception as exc:
             logging.warning("tail_file: error on %s: %s", filepath, exc)
