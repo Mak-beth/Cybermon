@@ -58,6 +58,54 @@ def test_parse_auth_accepted_line():
     assert result["status"] == "success"
 
 
+# --- parser: auth (Windows OpenSSH file-log format) ---
+
+def test_parse_auth_windows_failed_password():
+    line = "6376 2026-08-16 03:17:28.251 Failed password for invalid user faketestuser from ::1 port 51785 ssh2"
+    result = parse_auth_log_line(line)
+    assert result is not None
+    assert result["timestamp"] == "2026-08-16 03:17:28.251"
+    assert result["hostname"] == "localhost"
+    assert result["process"] == "sshd"
+    assert result["username"] == "faketestuser"
+    assert result["source_ip"] == "::1"
+    assert result["status"] == "failure"
+    assert result["raw"] == line
+
+
+def test_parse_auth_windows_invalid_user():
+    line = "6376 2026-08-16 03:17:20.233 Invalid user faketestuser from ::1 port 51785"
+    result = parse_auth_log_line(line)
+    assert result is not None
+    assert result["timestamp"] == "2026-08-16 03:17:20.233"
+    assert result["hostname"] == "localhost"
+    assert result["process"] == "sshd"
+    assert result["username"] == "faketestuser"
+    assert result["source_ip"] == "::1"
+    assert result["status"] == "failure"
+    assert result["raw"] == line
+
+
+def test_parse_auth_windows_accepted_password():
+    line = "6376 2026-08-16 03:20:11.400 Accepted password for realuser from 192.168.1.5 port 51790 ssh2"
+    result = parse_auth_log_line(line)
+    assert result is not None
+    assert result["timestamp"] == "2026-08-16 03:20:11.400"
+    assert result["hostname"] == "localhost"
+    assert result["process"] == "sshd"
+    assert result["username"] == "realuser"
+    assert result["source_ip"] == "192.168.1.5"
+    assert result["status"] == "success"
+
+
+def test_parse_auth_windows_dict_shape_matches_linux():
+    win = parse_auth_log_line(
+        "6376 2026-08-16 03:17:28.251 Failed password for admin from ::1 port 51785 ssh2")
+    lin = parse_auth_log_line(
+        "May 27 09:10:01 server sshd[1001]: Failed password for admin from 192.168.1.100 port 22 ssh2")
+    assert set(win.keys()) == set(lin.keys())
+
+
 # --- parser: access ---
 
 def test_parse_access_returns_none_on_blank():

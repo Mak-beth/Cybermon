@@ -8,6 +8,13 @@ _AUTH_LINE = re.compile(
     r'(\S+\[\d+\]):\s+'
     r'(.+)$'
 )
+# Windows OpenSSH file log: "<pid> <YYYY-MM-DD HH:MM:SS.mmm> <message>"
+# No hostname and no process[pid]: token — just a leading PID and an ISO timestamp.
+_WINDOWS_AUTH_LINE = re.compile(
+    r'^\d+\s+'
+    r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+'
+    r'(.+)$'
+)
 _FAILED_MSG       = re.compile(r'Failed password for (?:invalid user )?(\S+) from (\S+) port')
 _ACCEPTED_MSG     = re.compile(r'Accepted password for (\S+) from (\S+) port')
 # "Invalid user X from IP" — appears without "Failed password" prefix in some sshd versions
@@ -35,9 +42,17 @@ def parse_auth_log_line(line: str) -> Optional[dict]:
     if not line or not line.strip():
         return None
     m = _AUTH_LINE.match(line)
-    if not m:
-        return None
-    timestamp_str, hostname, process, message = m.groups()
+    if m:
+        # Linux syslog: "Aug 16 03:17:28 host sshd[6376]: <message>"
+        timestamp_str, hostname, process, message = m.groups()
+    else:
+        # Windows OpenSSH: "<pid> <YYYY-MM-DD HH:MM:SS.mmm> <message>"
+        wm = _WINDOWS_AUTH_LINE.match(line)
+        if not wm:
+            return None
+        timestamp_str, message = wm.groups()
+        hostname, process = "localhost", "sshd"
+
     failed = _FAILED_MSG.search(message)
     if failed:
         return {
