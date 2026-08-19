@@ -202,6 +202,21 @@ def main():
     # 9. Start continuous live monitoring.
     from src.ingestion.watcher import LogWatcher
 
+    def _live_event_sink(event: dict, db_path: str) -> None:
+        """Persist each live event exactly like the batch pipeline does.
+
+        Runs before detection, so a violation's triggering_event_id resolves to
+        a real row and the detail view can show the raw log excerpt.
+
+        Note: live mode runs continuously, so the events table grows for as long
+        as the app is running. That is accepted here — there is deliberately no
+        retention/pruning logic.
+        """
+        try:
+            insert_events([event], db_path)
+        except Exception as exc:
+            logging.getLogger(__name__).error("Live event sink error: %s", exc)
+
     def _live_callback(scored_violation: dict, db_path: str) -> None:
         try:
             scored_violation["triggering_event_id"] = find_triggering_event_id(
@@ -218,6 +233,7 @@ def main():
         auth_log=auth_log,
         web_log=web_log,
         on_violation=lambda v: _live_callback(v, db_path),
+        on_event=lambda e: _live_event_sink(e, db_path),
     )
 
     # 10. Network mode: ingest endpoint on a daemon thread.

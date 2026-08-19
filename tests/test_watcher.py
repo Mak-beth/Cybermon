@@ -1,9 +1,17 @@
+import sqlite3
 import threading
 import time
 import yaml
 import pytest
 
 from src.ingestion.watcher import tail_file, LogWatcher
+from src.storage.db import init_db
+from src.storage.writer import (
+    insert_events,
+    insert_violation,
+    insert_risk_score,
+    find_triggering_event_id,
+)
 
 
 @pytest.fixture
@@ -375,3 +383,111 @@ def test_logwatcher_detects_windows_off_hours_login(tmp_path, config):
         v["violation_type"] == "off_hours_login" and v["username"] == "winuser"
         for v in violations
     )
+
+
+# ---------------------------------------------------------------------------
+# Live path persists its events, so triggering_event_id resolves and the detail
+# view can show the log excerpt. Regression guard for violations that used to
+# store NULL because LogWatcher never wrote the event row.
+# ---------------------------------------------------------------------------
+
+def _run_live_to_db(tmp_path, config, lines):
+    """Drive lines through LogWatcher wired exactly like main.py does.
+
+    on_event  -> insert_events (persist first, so the FK target exists)
+    on_violation -> find_triggering_event_id -> insert_violation -> insert_risk_score
+
+    Returns (db_path, violations).
+    """
+    db_path = str(tmp_path / "live.db")
+    init_db(db_path)
+
+    auth_log = tmp_path / "auth.log"
+    web_log = tmp_path / "web.log"
+    auth_log.touch()
+    web_log.touch()
+
+    violations = []
+    got_violation = threading.Event()
+
+    def on_event(event):
+        insert_events([event], db_path)
+
+    def on_violation(v):
+        v["triggering_event_id"] = find_triggering_event_id(v, db_path)
+        vid = insert_violation(v, db_path)
+        insert_risk_score(vid, v, db_path)
+        violations.append(v)
+        got_violation.set()
+
+    watcher = LogWatcher(config)
+    watcher.start(str(auth_log), str(web_log), on_violation, on_event=on_event)
+    time.sleep(0.2)   # let tail open and seek to end
+
+    with open(str(auth_log), "a") as f:
+        for line in lines:
+            f.write(line + "\n")
+        f.flush()
+
+    got_violation.wait(timeout=3)
+    time.sleep(0.3)   # let any trailing lines finish processing
+    watcher.stop()
+    return db_path, violations
+
+
+def _joined_excerpt(db_path, violation_id):
+    """Resolve the excerpt the way the detail view does (LEFT JOIN on the FK)."""
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT v.triggering_event_id, e.raw_log "
+        "FROM violations v LEFT JOIN events e ON e.id = v.triggering_event_id "
+        "WHERE v.id = ?",
+        (violation_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def test_live_failed_login_violation_resolves_log_excerpt(tmp_path, config):
+    threshold = config["detection"]["failed_logins"]["threshold"]
+    # count > threshold fires on the (threshold+1)-th line -> 0-based index == threshold
+    lines = [
+        f"6376 2026-08-16 03:17:{28 + i:02d}.251 "
+        f"Failed password for winbrute from ::1 port 5178{i} ssh2"
+        for i in range(threshold + 3)
+    ]
+
+    db_path, violations = _run_live_to_db(tmp_path, config, lines)
+
+    assert violations, "no failed_logins violation emitted"
+    v = violations[0]
+    assert v["violation_type"] == "failed_logins"
+
+    conn = sqlite3.connect(db_path)
+    vid = conn.execute(
+        "SELECT id FROM violations WHERE violation_type='failed_logins'"
+    ).fetchone()[0]
+    conn.close()
+
+    triggering_event_id, raw_log = _joined_excerpt(db_path, vid)
+    assert triggering_event_id is not None, "triggering_event_id stored as NULL"
+    assert raw_log == lines[threshold]
+
+
+def test_live_off_hours_violation_resolves_log_excerpt(tmp_path, config):
+    line = ("6376 2026-08-16 03:17:28.251 "
+            "Accepted password for winuser from 10.0.0.9 port 51790 ssh2")
+
+    db_path, violations = _run_live_to_db(tmp_path, config, [line])
+
+    assert any(v["violation_type"] == "off_hours_login" for v in violations)
+
+    conn = sqlite3.connect(db_path)
+    vid = conn.execute(
+        "SELECT id FROM violations WHERE violation_type='off_hours_login'"
+    ).fetchone()[0]
+    conn.close()
+
+    triggering_event_id, raw_log = _joined_excerpt(db_path, vid)
+    assert triggering_event_id is not None, "triggering_event_id stored as NULL"
+    assert raw_log == line

@@ -78,10 +78,18 @@ class LogWatcher:
         self._lock = threading.Lock()
         self._threads: list[threading.Thread] = []
 
-    def start(self, auth_log: str, web_log: str, on_violation) -> None:
+    def start(self, auth_log: str, web_log: str, on_violation, on_event=None) -> None:
+        """Tail both logs, emitting violations via on_violation.
+
+        on_event is an optional event sink called with each normalized event
+        BEFORE detection runs. It exists so the caller can persist the event
+        (and its raw_log) first, guaranteeing the row a violation's
+        triggering_event_id points at already exists. Persistence is injected:
+        this module never imports the storage layer.
+        """
         self._stop.clear()
         self._threads = []
-        cb = self._make_callback(on_violation)
+        cb = self._make_callback(on_violation, on_event)
         for filepath, log_type in ((auth_log, "auth"), (web_log, "web")):
             t = threading.Thread(
                 target=tail_file,
@@ -94,18 +102,25 @@ class LogWatcher:
     def stop(self) -> None:
         self._stop.set()
 
-    def _make_callback(self, on_violation):
+    def _make_callback(self, on_violation, on_event=None):
         def callback(line: str, log_type: str) -> None:
-            self._handle(line, log_type, on_violation)
+            self._handle(line, log_type, on_violation, on_event)
         return callback
 
-    def _handle(self, line: str, log_type: str, on_violation) -> None:
+    def _handle(self, line: str, log_type: str, on_violation, on_event=None) -> None:
         parser = parse_auth_log_line if log_type == "auth" else parse_access_log_line
         parsed = parser(line)
         if parsed is None:
             return
 
         event = normalize_event(parsed, log_type)
+
+        # Hand the event to the sink (if any) before detection, so a violation
+        # emitted below can resolve its triggering_event_id against a row that
+        # already exists.
+        if on_event is not None:
+            on_event(event)
+
         violations = []
 
         if log_type == "auth" and event["status_code"] == "FAILED":
