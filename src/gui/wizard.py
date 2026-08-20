@@ -132,10 +132,10 @@ def _build_wizard():
             border-left: 1px solid {_BORDER};
             border-bottom: 1px solid {_BORDER};
             border-top-right-radius: 4px;
-            background: #f9fafb;
+            background: {_CARD};
         }}
-        QSpinBox::up-button:hover, QTimeEdit::up-button:hover {{ background: #e5e7eb; }}
-        QSpinBox::up-button:pressed, QTimeEdit::up-button:pressed {{ background: #d1d5db; }}
+        QSpinBox::up-button:hover, QTimeEdit::up-button:hover {{ background: {_BORDER}; }}
+        QSpinBox::up-button:pressed, QTimeEdit::up-button:pressed {{ background: {_MUTED}; }}
         QSpinBox::down-button, QTimeEdit::down-button {{
             subcontrol-origin: border;
             subcontrol-position: bottom right;
@@ -143,12 +143,22 @@ def _build_wizard():
             border-left: 1px solid {_BORDER};
             border-top: 1px solid {_BORDER};
             border-bottom-right-radius: 4px;
-            background: #f9fafb;
+            background: {_CARD};
         }}
-        QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: #e5e7eb; }}
-        QSpinBox::down-button:pressed, QTimeEdit::down-button:pressed {{ background: #d1d5db; }}
-        QSpinBox::up-arrow, QTimeEdit::up-arrow {{ width: 8px; height: 8px; }}
-        QSpinBox::down-arrow, QTimeEdit::down-arrow {{ width: 8px; height: 8px; }}
+        QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {_BORDER}; }}
+        QSpinBox::down-button:pressed, QTimeEdit::down-button:pressed {{ background: {_MUTED}; }}
+        QSpinBox::up-arrow, QTimeEdit::up-arrow {{
+            image: none; width: 0; height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-bottom: 5px solid {_TEXT};
+        }}
+        QSpinBox::down-arrow, QTimeEdit::down-arrow {{
+            image: none; width: 0; height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid {_TEXT};
+        }}
     """
 
     def _section_label(text):

@@ -234,8 +234,9 @@ class SettingsPanel(QWidget):
         lbl = QLabel(f"{label_text}:")
         lbl.setFixedWidth(60)
         browse = QPushButton("Browse")
-        browse.setObjectName("save")
-        browse.setFixedWidth(70)
+        browse.setObjectName("browse")   # compact padding so the label fits
+        # 70px clipped "Browse" to "rows"; size to the label plus padding.
+        browse.setFixedWidth(90)
         browse.clicked.connect(lambda: self._browse(field))
         row.addWidget(lbl)
         row.addWidget(field)

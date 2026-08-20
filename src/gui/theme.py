@@ -200,6 +200,13 @@ def build_app_stylesheet(palette: dict) -> str:
         border-radius: 4px; padding: 8px 20px; font-size: 13px;
     }}
     QPushButton#rerun:hover {{ background: {bdr}; }}
+    /* Compact accent button for narrow fixed-width uses (e.g. 70px "Browse").
+       The #save padding of 20px each side would clip the label. */
+    QPushButton#browse {{
+        background: {ACCENT}; color: white; border: none; border-radius: 4px;
+        padding: 6px 4px; font-size: 12px; font-weight: bold;
+    }}
+    QPushButton#browse:hover {{ background: {ACCENT_HOVER}; }}
 
     /* ---------- inputs ---------- */
     QLineEdit, QSpinBox, QTimeEdit, QPlainTextEdit, QTextEdit {{
@@ -222,14 +229,36 @@ def build_app_stylesheet(palette: dict) -> str:
     }}
     QSpinBox::up-button:hover, QTimeEdit::up-button:hover,
     QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {bdr}; }}
-    QSpinBox::up-arrow, QTimeEdit::up-arrow,
-    QSpinBox::down-arrow, QTimeEdit::down-arrow {{ width: 8px; height: 8px; }}
+
+    /* Arrow glyphs drawn as CSS triangles.
+       Styling ::up-button/::down-button suppresses Qt's native arrow, and a
+       bare width/height leaves it blank — the glyph must be drawn explicitly.
+       Border-triangles need no image asset and follow the palette. */
+    QSpinBox::up-arrow, QTimeEdit::up-arrow {{
+        image: none; width: 0; height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 5px solid {text};
+    }}
+    QSpinBox::down-arrow, QTimeEdit::down-arrow {{
+        image: none; width: 0; height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 5px solid {text};
+    }}
+    QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled,
+    QTimeEdit::up-arrow:disabled, QTimeEdit::down-arrow:disabled {{
+        border-bottom-color: {muted}; border-top-color: {muted};
+    }}
 
     /* ---------- combo box (closed box AND popup list) ---------- */
     QComboBox {{
         background: {inp}; color: {text}; border: 1px solid {bdr};
         border-radius: 4px; padding: 4px 8px; padding-right: 28px;
         selection-background-color: {ACCENT}; selection-color: white;
+        /* Use the styled list popup rather than the native one, so the rules
+           below actually apply and the popup cannot overflow its frame. */
+        combobox-popup: 0;
     }}
     QComboBox::drop-down {{
         subcontrol-origin: border; subcontrol-position: right center; width: 24px;
@@ -239,11 +268,33 @@ def build_app_stylesheet(palette: dict) -> str:
     }}
     QComboBox::drop-down:hover   {{ background: {bdr}; }}
     QComboBox::drop-down:pressed {{ background: {muted}; }}
-    QComboBox::down-arrow {{ width: 10px; height: 10px; }}
+    QComboBox::down-arrow {{
+        image: none; width: 0; height: 0;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid {text};
+    }}
+    QComboBox::down-arrow:on {{
+        border-top: none;
+        border-bottom: 6px solid {text};
+    }}
+    /* Popup list. Both the view AND its items need rules: styling only the
+       view leaves item text painted by the native palette (dark-on-dark). */
     QComboBox QAbstractItemView {{
-        background: {card}; color: {text}; border: 1px solid {bdr};
+        background: {card}; color: {text};
+        border: 1px solid {bdr}; border-radius: 4px;
         selection-background-color: {ACCENT}; selection-color: white;
-        outline: none;
+        outline: none; padding: 2px;
+    }}
+    QComboBox QAbstractItemView::item {{
+        background: {card}; color: {text};
+        min-height: 24px; padding: 4px 8px; border: none;
+    }}
+    QComboBox QAbstractItemView::item:hover {{
+        background: {ACCENT}; color: white;
+    }}
+    QComboBox QAbstractItemView::item:selected {{
+        background: {ACCENT}; color: white;
     }}
 
     /* ---------- tables & headers ---------- */
