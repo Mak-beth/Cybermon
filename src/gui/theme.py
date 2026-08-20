@@ -1,19 +1,49 @@
-"""CyberMon theme system.
+"""CyberMon theme system — single source of truth for all UI colours.
 
-Two palette dicts: LIGHT (default) and DARK.
-Module-level active theme is maintained so any widget constructed after a
-theme change (e.g. DetailPanel, which is built fresh on every row click)
-automatically uses the correct colours without needing a MainWindow reference.
+Design
+------
+Every colour lives here. Widgets must NOT call setStyleSheet with hardcoded
+colours: they set an objectName and the rules below style them, so a theme
+switch re-styles them automatically even when no Python reference to the widget
+was kept (the bug that left small Overview text dark-on-dark).
+
+Anything Qt stylesheets cannot reach — PyQtGraph internals, custom QPainter
+widgets — registers a hook via register_chart() and is re-themed in code.
 
 Usage
 -----
     from src.gui import theme
 
-    theme.set_active("dark")          # switch active theme
-    palette = theme.get_active()      # read current palette dict
-    css = theme.build_app_stylesheet(palette)  # global Qt stylesheet
+    theme.apply_theme(dark=True)      # restyle whole app + charts + persist
+    theme.load_saved_theme()          # -> bool, read persisted choice at startup
+    palette = theme.get_active()      # current palette dict
 """
 from __future__ import annotations
+
+import logging
+
+from PyQt6.QtCore import QSettings
+from PyQt6.QtWidgets import QApplication
+
+logger = logging.getLogger(__name__)
+
+_SETTINGS_ORG = "CyberMon"
+_SETTINGS_APP = "CyberMon"
+_SETTINGS_KEY = "ui/theme"
+
+# Brand accent — identical in both themes.
+ACCENT       = "#7c3aed"
+ACCENT_HOVER = "#6d28d9"
+ACCENT_DOWN  = "#5b21b6"
+
+# Semantic severity colours — deliberately theme-invariant so a Critical badge
+# looks the same in light and dark. Never fold these into a palette.
+SEVERITY: dict = {
+    "Critical": "#7f1d1d",
+    "High":     "#ef4444",
+    "Medium":   "#f59e0b",
+    "Low":      "#22c55e",
+}
 
 LIGHT: dict = {
     "sidebar_bg":     "#1e1e2e",   # sidebar stays dark in both themes
@@ -71,94 +101,271 @@ def get_active_name() -> str:
     return _active_name
 
 
+def is_dark() -> bool:
+    """True when the dark theme is active. Prefer this over identity checks
+    against the DARK dict, which break if a palette is ever copied/rebuilt."""
+    return _active_name == "dark"
+
+
 # ---------------------------------------------------------------------------
-# Global Qt stylesheet — acts as a fallback for widgets not explicitly styled
+# Chart hooks — for anything QSS cannot reach (PyQtGraph, QPainter widgets)
+# ---------------------------------------------------------------------------
+_chart_hooks: list = []
+
+
+def register_chart(hook) -> None:
+    """Register callable(palette) to be invoked on every theme change."""
+    _chart_hooks.append(hook)
+
+
+def _retheme_charts(palette: dict) -> None:
+    for hook in list(_chart_hooks):
+        try:
+            hook(palette)
+        except Exception:
+            # Non-fatal: a deleted widget must never break the toggle. Logged
+            # (not swallowed) so failures are visible during testing.
+            logger.warning("theme: chart re-theme hook failed", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# The single app-wide stylesheet
 # ---------------------------------------------------------------------------
 
 def build_app_stylesheet(palette: dict) -> str:
+    """Return the complete Qt stylesheet for the given palette."""
     bg    = palette["content_bg"]
     card  = palette["card_bg"]
     text  = palette["text_primary"]
     muted = palette["text_secondary"]
     bdr   = palette["border"]
     inp   = palette["input_bg"]
+    alt   = palette["table_alt"]
+    sel   = palette["table_selected"]
+    side  = palette["sidebar_bg"]
+
     return f"""
-        QWidget            {{ background-color: {bg};   color: {text}; }}
-        QLabel             {{ color: {text};             background: transparent; }}
-        QDialog            {{ background-color: {card}; color: {text}; }}
-        QScrollArea        {{ background-color: {bg};   border: none; }}
-        QScrollBar:vertical {{
-            background: {card}; width: 8px; border-radius: 4px;
-        }}
-        QScrollBar::handle:vertical {{
-            background: {bdr}; border-radius: 4px; min-height: 20px;
-        }}
-        QFrame             {{ background-color: {bg}; }}
-        QTabWidget::pane   {{ background: {bg}; border: 1px solid {bdr}; }}
-        QTabBar::tab       {{
-            background: {card}; color: {muted};
-            padding: 6px 18px; border-radius: 2px;
-        }}
-        QTabBar::tab:selected {{ background: #7c3aed; color: white; }}
-        QLineEdit, QSpinBox, QTimeEdit {{
-            background: {inp};
-            color: {text};
-            border: 1px solid {bdr};
-            border-radius: 4px;
-            padding: 4px 8px;
-            selection-background-color: #7c3aed;
-            selection-color: white;
-        }}
-        QComboBox {{
-            background: {inp};
-            color: {text};
-            border: 1px solid {bdr};
-            border-radius: 4px;
-            padding: 4px 8px;
-            padding-right: 28px;
-            selection-background-color: #7c3aed;
-            selection-color: white;
-        }}
-        QComboBox::drop-down {{
-            subcontrol-origin: border;
-            subcontrol-position: right center;
-            width: 24px;
-            border-left: 1px solid {bdr};
-            border-top-right-radius: 4px;
-            border-bottom-right-radius: 4px;
-            background: {card};
-        }}
-        QComboBox::drop-down:hover   {{ background: {bdr}; }}
-        QComboBox::drop-down:pressed {{ background: {muted}; }}
-        QComboBox::down-arrow {{
-            width: 10px;
-            height: 10px;
-        }}
-        QComboBox QAbstractItemView {{
-            background: {card};
-            color: {text};
-            border: 1px solid {bdr};
-            selection-background-color: #7c3aed;
-            selection-color: white;
-            outline: none;
-        }}
-        QCheckBox          {{ color: {text}; background: transparent; }}
-        QCheckBox::indicator {{
-            width: 14px; height: 14px;
-            border: 1px solid {bdr};
-            border-radius: 3px;
-            background: {inp};
-        }}
-        QCheckBox::indicator:checked {{
-            background: #7c3aed; border-color: #7c3aed;
-        }}
-        QProgressBar {{
-            background: {bdr}; border-radius: 5px; border: none;
-        }}
-        QTextEdit {{
-            background: {card}; color: {text};
-            border: 1px solid {bdr}; border-radius: 4px;
-        }}
-        QMessageBox {{ background: {card}; color: {text}; }}
-        QToolTip    {{ background: {card}; color: {text}; border: 1px solid {bdr}; }}
+    /* ---------- base ---------- */
+    QWidget  {{ background-color: {bg}; color: {text}; }}
+    QLabel   {{ color: {text}; background: transparent; }}
+    QDialog, QMessageBox {{ background-color: {card}; color: {text}; }}
+    QMainWindow, QStackedWidget {{ background-color: {bg}; }}
+
+    /* ---------- named labels (reachable without a stored reference) ---------- */
+    QLabel#panelTitle     {{ color: {text};  font-size: 18px; font-weight: bold; }}
+    QLabel#sectionTitle   {{ color: {text};  font-size: 13px; font-weight: bold; border: none; }}
+    QLabel#sectionHeader  {{ color: {muted}; font-size: 11px; font-weight: bold;
+                             letter-spacing: 0.5px; }}
+    QLabel#fieldLabel     {{ color: {text};  font-size: 13px; }}
+    QLabel#metricTitle    {{ color: {muted}; font-size: 12px; border: none; }}
+    QLabel#breakdownLabel {{ color: {text};  font-size: 12px; border: none; }}
+    QLabel#breakdownCount {{ color: {text};  font-size: 13px; font-weight: bold; border: none; }}
+    QLabel#legendText     {{ color: {text};  font-size: 11px; border: none; }}
+    QLabel#chartTitle     {{ color: {text};  font-size: 13px; font-weight: bold; border: none; }}
+    QLabel#lastUpdated    {{ color: {muted}; font-size: 12px; }}
+    QLabel#mutedText      {{ color: {muted}; font-size: 12px; }}
+    QLabel#emptyState     {{ color: {muted}; font-size: 15px; }}
+
+    /* ---------- cards / frames ---------- */
+    QFrame#card {{
+        background: {card}; border: 1px solid {bdr}; border-radius: 6px;
+    }}
+    QFrame#divider {{ color: {bdr}; background: {bdr}; border: none; }}
+
+    /* ---------- buttons ---------- */
+    QPushButton#primary {{
+        background: {ACCENT}; color: white; border: none;
+        border-radius: 4px; padding: 6px 12px; font-size: 13px;
+    }}
+    QPushButton#primary:hover   {{ background: {ACCENT_HOVER}; }}
+    QPushButton#primary:pressed {{ background: {ACCENT_DOWN}; }}
+    QPushButton#secondary {{
+        background: {card}; color: {text}; border: 1px solid {bdr};
+        border-radius: 4px; padding: 6px 12px; font-size: 13px;
+    }}
+    QPushButton#secondary:hover {{ background: {bdr}; }}
+
+    /* settings panel uses its own long-standing object names */
+    QLabel#section {{
+        color: {muted}; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;
+    }}
+    QWidget#settings_root {{ background: {bg}; }}
+    QPushButton#save {{
+        background: {ACCENT}; color: white; border: none; border-radius: 4px;
+        padding: 8px 20px; font-size: 13px; font-weight: bold;
+    }}
+    QPushButton#save:hover {{ background: {ACCENT_HOVER}; }}
+    QPushButton#rerun {{
+        background: {card}; color: {muted}; border: 1px solid {bdr};
+        border-radius: 4px; padding: 8px 20px; font-size: 13px;
+    }}
+    QPushButton#rerun:hover {{ background: {bdr}; }}
+
+    /* ---------- inputs ---------- */
+    QLineEdit, QSpinBox, QTimeEdit, QPlainTextEdit, QTextEdit {{
+        background: {inp}; color: {text};
+        border: 1px solid {bdr}; border-radius: 4px; padding: 4px 8px;
+        selection-background-color: {ACCENT}; selection-color: white;
+    }}
+    QLineEdit:focus, QSpinBox:focus, QTimeEdit:focus,
+    QPlainTextEdit:focus, QComboBox:focus {{ border-color: {ACCENT}; }}
+
+    QSpinBox::up-button, QTimeEdit::up-button {{
+        subcontrol-origin: border; subcontrol-position: top right; width: 20px;
+        border-left: 1px solid {bdr}; border-bottom: 1px solid {bdr};
+        border-top-right-radius: 4px; background: {card};
+    }}
+    QSpinBox::down-button, QTimeEdit::down-button {{
+        subcontrol-origin: border; subcontrol-position: bottom right; width: 20px;
+        border-left: 1px solid {bdr}; border-top: 1px solid {bdr};
+        border-bottom-right-radius: 4px; background: {card};
+    }}
+    QSpinBox::up-button:hover, QTimeEdit::up-button:hover,
+    QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {bdr}; }}
+    QSpinBox::up-arrow, QTimeEdit::up-arrow,
+    QSpinBox::down-arrow, QTimeEdit::down-arrow {{ width: 8px; height: 8px; }}
+
+    /* ---------- combo box (closed box AND popup list) ---------- */
+    QComboBox {{
+        background: {inp}; color: {text}; border: 1px solid {bdr};
+        border-radius: 4px; padding: 4px 8px; padding-right: 28px;
+        selection-background-color: {ACCENT}; selection-color: white;
+    }}
+    QComboBox::drop-down {{
+        subcontrol-origin: border; subcontrol-position: right center; width: 24px;
+        border-left: 1px solid {bdr};
+        border-top-right-radius: 4px; border-bottom-right-radius: 4px;
+        background: {card};
+    }}
+    QComboBox::drop-down:hover   {{ background: {bdr}; }}
+    QComboBox::drop-down:pressed {{ background: {muted}; }}
+    QComboBox::down-arrow {{ width: 10px; height: 10px; }}
+    QComboBox QAbstractItemView {{
+        background: {card}; color: {text}; border: 1px solid {bdr};
+        selection-background-color: {ACCENT}; selection-color: white;
+        outline: none;
+    }}
+
+    /* ---------- tables & headers ---------- */
+    QTableView, QTableWidget {{
+        background: {card}; color: {text};
+        alternate-background-color: {alt};
+        gridline-color: {bdr}; border: 1px solid {bdr};
+        font-size: 13px;
+    }}
+    QTableView::item:selected, QTableWidget::item:selected {{
+        background: {sel}; color: {text};
+    }}
+    QHeaderView {{ background: {card}; }}
+    QHeaderView::section {{
+        background: {card}; color: {text}; font-weight: bold;
+        padding: 6px; border: none; border-bottom: 2px solid {bdr};
+    }}
+    QTableCornerButton::section {{ background: {card}; border: none; }}
+
+    /* ---------- group boxes ---------- */
+    QGroupBox {{
+        color: {text}; border: 1px solid {bdr}; border-radius: 6px;
+        margin-top: 10px; padding-top: 10px;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin; subcontrol-position: top left;
+        left: 8px; padding: 0 4px; color: {muted};
+    }}
+
+    /* ---------- tabs ---------- */
+    QTabWidget::pane {{ background: {bg}; border: 1px solid {bdr}; border-radius: 4px; }}
+    QTabBar::tab {{
+        background: {card}; color: {muted}; padding: 6px 18px; border-radius: 2px;
+    }}
+    QTabBar::tab:selected {{ background: {ACCENT}; color: white; }}
+
+    /* ---------- scrollbars ---------- */
+    QScrollArea {{ background-color: {bg}; border: none; }}
+    QScrollBar:vertical   {{ background: {card}; width: 8px;  border-radius: 4px; }}
+    QScrollBar:horizontal {{ background: {card}; height: 8px; border-radius: 4px; }}
+    QScrollBar::handle:vertical   {{ background: {bdr}; border-radius: 4px; min-height: 20px; }}
+    QScrollBar::handle:horizontal {{ background: {bdr}; border-radius: 4px; min-width: 20px; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; border: none; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+
+    /* ---------- misc ---------- */
+    QCheckBox {{ color: {text}; background: transparent; }}
+    QCheckBox::indicator {{
+        width: 14px; height: 14px; border: 1px solid {bdr};
+        border-radius: 3px; background: {inp};
+    }}
+    QCheckBox::indicator:checked {{ background: {ACCENT}; border-color: {ACCENT}; }}
+    QProgressBar {{ background: {bdr}; border-radius: 5px; border: none; }}
+    QToolTip {{
+        background: {card}; color: {text}; border: 1px solid {bdr}; padding: 4px;
+    }}
+
+    /* ---------- sidebar (dark in both themes) ---------- */
+    QFrame#sidebar {{ background-color: {side}; border: none; }}
+    QFrame#sidebar QLabel {{ background: {side}; }}
+    QLabel#sidebarTitle {{ color: {ACCENT}; font-size: 17px; font-weight: bold; }}
+    QLabel#sidebarVersion {{ color: #4a4a6a; font-size: 11px; }}
+    QFrame#sidebarDivider {{ color: #3d3d5c; background: #3d3d5c; border: none; }}
+    QLabel#agentIndicator {{ color: {SEVERITY['High']}; font-size: 11px; padding: 4px 12px; }}
+    QPushButton#navButton {{
+        border: none; border-left: 4px solid transparent; background: transparent;
+        color: {palette['sidebar_text']}; text-align: left;
+        padding: 12px 16px; font-size: 14px;
+    }}
+    QPushButton#navButton:hover {{ background: rgba(124, 58, 237, 0.12); }}
+    QPushButton#navButton:checked {{
+        border-left: 4px solid {ACCENT}; background: rgba(124, 58, 237, 0.20);
+        color: #ffffff; font-weight: bold;
+    }}
+
+    /* ---------- warning banner (fixed amber in both themes) ---------- */
+    QFrame#warning_banner {{ background: #fef3c7; border-bottom: 1px solid #f59e0b; }}
+    QFrame#warning_banner QLabel {{ background: transparent; color: #92400e; font-size: 13px; }}
+    QLabel#bannerIcon {{ color: #d97706; font-size: 16px; font-weight: bold; }}
+    QPushButton#bannerLink {{
+        color: {ACCENT}; font-size: 13px; text-decoration: underline;
+        border: none; background: transparent; padding: 0 4px;
+    }}
+    QPushButton#bannerDismiss {{
+        color: #92400e; border: none; background: transparent; font-size: 14px;
+    }}
     """
+
+
+# ---------------------------------------------------------------------------
+# Public entry point + persistence
+# ---------------------------------------------------------------------------
+
+def apply_theme(dark: bool) -> None:
+    """Apply a theme app-wide: stylesheet, chart internals, and persist choice.
+
+    Instant hard swap — no animation (standard Qt behaviour).
+    """
+    set_active("dark" if dark else "light")
+    palette = get_active()
+
+    app = QApplication.instance()
+    if app is not None:
+        app.setStyleSheet(build_app_stylesheet(palette))
+
+    _retheme_charts(palette)
+
+    try:
+        QSettings(_SETTINGS_ORG, _SETTINGS_APP).setValue(_SETTINGS_KEY, get_active_name())
+    except Exception:
+        logger.warning("theme: could not persist theme preference", exc_info=True)
+
+
+def load_saved_theme() -> bool:
+    """Read the persisted theme preference. Returns True when dark.
+
+    Stored in QSettings — a UI preference, deliberately kept out of
+    config.yaml (which holds detection rules).
+    """
+    try:
+        value = QSettings(_SETTINGS_ORG, _SETTINGS_APP).value(_SETTINGS_KEY, "light")
+    except Exception:
+        logger.warning("theme: could not read theme preference", exc_info=True)
+        return False
+    return str(value).lower() == "dark"

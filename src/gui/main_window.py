@@ -63,36 +63,15 @@ def _make_shield_icon() -> QIcon:
 # ---------------------------------------------------------------------------
 
 class _SidebarButton(QPushButton):
-    def __init__(self, label: str, sidebar_bg: str, parent=None):
+    """Sidebar nav item. Styled by object name in the app stylesheet."""
+
+    def __init__(self, label: str, parent=None):
         super().__init__(label, parent)
-        self._sidebar_bg = sidebar_bg
+        self.setObjectName("navButton")
         self.setCheckable(True)
         self.setFlat(True)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(46)
-        self._apply_style(sidebar_bg)
-
-    def _apply_style(self, sidebar_bg: str) -> None:
-        self.setStyleSheet(f"""
-            QPushButton {{
-                border: none;
-                border-left: 4px solid transparent;
-                background: transparent;
-                color: #e2e8f0;
-                text-align: left;
-                padding: 12px 16px;
-                font-size: 14px;
-            }}
-            QPushButton:hover {{
-                background: rgba(124, 58, 237, 0.12);
-            }}
-            QPushButton:checked {{
-                border-left: 4px solid {_ACCENT_PURPLE};
-                background: rgba(124, 58, 237, 0.20);
-                color: #ffffff;
-                font-weight: bold;
-            }}
-        """)
 
 
 # ---------------------------------------------------------------------------
@@ -104,11 +83,9 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._config = config
 
-        # Initialise active theme from config before building UI
-        theme_name = config.get("ui", {}).get("theme", "light")
-        _theme.set_active(theme_name)
-
-        # Apply global app-level stylesheet
+        # Theme is a UI preference: read it from QSettings, not config.yaml
+        # (which holds detection rules). Applied before the UI is built.
+        _theme.set_active("dark" if _theme.load_saved_theme() else "light")
         QApplication.instance().setStyleSheet(
             _theme.build_app_stylesheet(_theme.get_active())
         )
@@ -156,12 +133,6 @@ class MainWindow(QMainWindow):
     def _build_warning_banner(self) -> QFrame:
         banner = QFrame()
         banner.setObjectName("warning_banner")
-        banner.setStyleSheet("""
-            QFrame#warning_banner {
-                background: #fef3c7;
-                border-bottom: 1px solid #f59e0b;
-            }
-        """)
         banner.setFixedHeight(38)
 
         row = QHBoxLayout(banner)
@@ -169,28 +140,16 @@ class MainWindow(QMainWindow):
         row.setSpacing(8)
 
         icon_lbl = QLabel("!")
-        icon_lbl.setStyleSheet(
-            "color: #d97706; font-size: 16px; font-weight: bold; background: transparent;"
-        )
+        icon_lbl.setObjectName("bannerIcon")
         icon_lbl.setFixedWidth(16)
         row.addWidget(icon_lbl)
 
         self._banner_text = QLabel("")
-        self._banner_text.setStyleSheet(
-            "color: #92400e; font-size: 13px; background: transparent;"
-        )
         row.addWidget(self._banner_text, stretch=1)
 
         settings_link = QPushButton("Check your settings")
         settings_link.setFlat(True)
-        settings_link.setStyleSheet("""
-            QPushButton {
-                color: #7c3aed; font-size: 13px;
-                text-decoration: underline;
-                border: none; background: transparent; padding: 0 4px;
-            }
-            QPushButton:hover { color: #6d28d9; }
-        """)
+        settings_link.setObjectName("bannerLink")
         settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_link.clicked.connect(lambda: self._switch_to(4))
         row.addWidget(settings_link)
@@ -199,9 +158,7 @@ class MainWindow(QMainWindow):
         dismiss_btn.setFlat(True)
         dismiss_btn.setFixedWidth(24)
         dismiss_btn.setFixedHeight(24)
-        dismiss_btn.setStyleSheet(
-            "color: #92400e; border: none; background: transparent; font-size: 14px;"
-        )
+        dismiss_btn.setObjectName("bannerDismiss")
         dismiss_btn.clicked.connect(lambda: banner.setVisible(False))
         row.addWidget(dismiss_btn)
 
@@ -209,10 +166,9 @@ class MainWindow(QMainWindow):
         return banner
 
     def _build_sidebar(self) -> QFrame:
-        sidebar_bg = _theme.get_active()["sidebar_bg"]
         sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(200)
-        sidebar.setStyleSheet(f"background-color: {sidebar_bg}; border: none;")
 
         layout = QVBoxLayout(sidebar)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -221,15 +177,12 @@ class MainWindow(QMainWindow):
         title = QLabel("CyberMon")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setFixedHeight(56)
-        title.setStyleSheet(
-            f"color: {_ACCENT_PURPLE}; font-size: 17px; font-weight: bold;"
-            f" background: {sidebar_bg};"
-        )
+        title.setObjectName("sidebarTitle")
         layout.addWidget(title)
 
         divider = QFrame()
         divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("color: #3d3d5c;")
+        divider.setObjectName("sidebarDivider")
         divider.setFixedHeight(1)
         layout.addWidget(divider)
 
@@ -238,7 +191,7 @@ class MainWindow(QMainWindow):
         self._nav_buttons: list[_SidebarButton] = []
 
         for idx, label in enumerate(_NAV_ITEMS):
-            btn = _SidebarButton(label, sidebar_bg)
+            btn = _SidebarButton(label)
             self._btn_group.addButton(btn, idx)
             layout.addWidget(btn)
             self._nav_buttons.append(btn)
@@ -247,10 +200,7 @@ class MainWindow(QMainWindow):
         if self._config.get("mode") == "network":
             layout.addSpacing(8)
             agent_indicator = QLabel("  No agents connected")
-            agent_indicator.setStyleSheet(
-                f"color: #ef4444; font-size: 11px; padding: 4px 12px;"
-                f" background: {sidebar_bg};"
-            )
+            agent_indicator.setObjectName("agentIndicator")
             agent_indicator.setToolTip("No agents connected. Check agent configuration.")
             layout.addWidget(agent_indicator)
 
@@ -259,18 +209,13 @@ class MainWindow(QMainWindow):
         self._ver_lbl = QLabel("v2.0")
         self._ver_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._ver_lbl.setFixedHeight(32)
-        self._ver_lbl.setStyleSheet(
-            f"color: #4a4a6a; font-size: 11px; background: {sidebar_bg};"
-        )
+        self._ver_lbl.setObjectName("sidebarVersion")
         layout.addWidget(self._ver_lbl)
 
         return sidebar
 
     def _build_content_area(self) -> QStackedWidget:
         self._stack = QStackedWidget()
-        self._stack.setStyleSheet(
-            f"background-color: {_theme.get_active()['content_bg']};"
-        )
 
         from src.gui.overview_panel   import OverviewPanel
         from src.gui.violations_table import ViolationsTable
@@ -298,24 +243,13 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def apply_theme(self, theme_name: str) -> None:
-        """Apply theme to the app stylesheet and all panels immediately."""
-        _theme.set_active(theme_name)
-        palette = _theme.get_active()
+        """Switch theme app-wide. Instant hard swap, no animation.
 
-        # Global fallback stylesheet
-        QApplication.instance().setStyleSheet(
-            _theme.build_app_stylesheet(palette)
-        )
-
-        # Content area background
-        self._stack.setStyleSheet(
-            f"background-color: {palette['content_bg']};"
-        )
-
-        # Per-panel stylesheets
-        for panel in self._panels:
-            if hasattr(panel, "apply_theme"):
-                panel.apply_theme(palette)
+        Delegates to theme.apply_theme(), the single source of truth: it sets
+        the app-wide stylesheet, re-themes registered charts, and persists the
+        choice to QSettings.
+        """
+        _theme.apply_theme(theme_name == "dark")
 
     # ------------------------------------------------------------------
     # Warnings / error notifications

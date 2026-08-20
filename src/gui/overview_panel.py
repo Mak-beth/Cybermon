@@ -42,15 +42,22 @@ class _MetricCard(QFrame):
         layout.setSpacing(4)
 
         self._value_lbl = QLabel("0")
+        # Accent colour is per-card and theme-invariant (severity semantics).
+        self._value_lbl.setStyleSheet(
+            f"color: {self._accent}; font-size: 30px; font-weight: bold; border: none;"
+        )
         layout.addWidget(self._value_lbl)
 
         self._title_lbl = QLabel(self._title_text)
+        self._title_lbl.setObjectName("metricTitle")   # themed by app stylesheet
         self._title_lbl.setWordWrap(True)
         layout.addWidget(self._title_lbl)
 
         self._apply_palette(_theme.get_active())
 
     def _apply_palette(self, palette: dict) -> None:
+        """Only the frame needs code: the accent border-left is per-instance,
+        so it cannot be expressed as a shared stylesheet rule."""
         self.setStyleSheet(f"""
             QFrame {{
                 background: {palette['card_bg']};
@@ -59,12 +66,6 @@ class _MetricCard(QFrame):
                 border-radius: 6px;
             }}
         """)
-        self._value_lbl.setStyleSheet(
-            f"color: {self._accent}; font-size: 30px; font-weight: bold; border: none;"
-        )
-        self._title_lbl.setStyleSheet(
-            f"color: {palette['text_secondary']}; font-size: 12px; border: none;"
-        )
 
     def set_value(self, value: int) -> None:
         self._value_lbl.setText(str(value))
@@ -169,6 +170,9 @@ class OverviewPanel(QWidget):
         self._palette = _theme.get_active()
         self._build_ui()
 
+        # Custom-painted doughnut can't be reached by QSS — re-theme in code.
+        _theme.register_chart(self.apply_theme)
+
         self._timer = QTimer(self)
         self._timer.setInterval(3_000)   # 3 s — matches live feed polling speed
         self._timer.timeout.connect(self.refresh)
@@ -182,7 +186,6 @@ class OverviewPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _build_ui(self) -> None:
-        p = self._palette
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 12)
         root.setSpacing(12)
@@ -190,23 +193,19 @@ class OverviewPanel(QWidget):
         root.addLayout(self._build_header())
         root.addLayout(self._build_middle(), stretch=1)
         root.addLayout(self._build_footer())
-
-        self.setStyleSheet(f"background: {p['content_bg']};")
+        # Background comes from the app stylesheet (QWidget rule).
 
     def _build_header(self) -> QHBoxLayout:
-        p = self._palette
         hdr = QHBoxLayout()
         hdr.setSpacing(10)
 
         self._title_lbl = QLabel("Overview")
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {p['text_primary']};"
-        )
+        self._title_lbl.setObjectName("panelTitle")
         hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
         self._host_lbl = QLabel("Host:")
-        self._host_lbl.setStyleSheet(f"color: {p['text_primary']};")
+        self._host_lbl.setObjectName("fieldLabel")
         hdr.addWidget(self._host_lbl)
 
         self._host_filter = QComboBox()
@@ -215,16 +214,8 @@ class OverviewPanel(QWidget):
         hdr.addWidget(self._host_filter)
 
         self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.setObjectName("primary")
         self._refresh_btn.setFixedWidth(100)
-        self._refresh_btn.setStyleSheet("""
-            QPushButton {
-                background: #7c3aed; color: white;
-                border: none; border-radius: 4px;
-                padding: 5px 10px; font-size: 13px;
-            }
-            QPushButton:hover   { background: #6d28d9; }
-            QPushButton:pressed { background: #5b21b6; }
-        """)
         self._refresh_btn.clicked.connect(self.refresh)
         hdr.addWidget(self._refresh_btn)
         return hdr
@@ -241,16 +232,14 @@ class OverviewPanel(QWidget):
         mid.addLayout(left, stretch=2)
 
         self._doughnut_frame = QFrame()
-        self._update_doughnut_frame_style()
+        self._doughnut_frame.setObjectName("card")
         rf_layout = QVBoxLayout(self._doughnut_frame)
         rf_layout.setContentsMargins(8, 8, 8, 8)
         rf_layout.setSpacing(4)
 
         self._chart_title_lbl = QLabel("Severity Distribution")
+        self._chart_title_lbl.setObjectName("chartTitle")
         self._chart_title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._chart_title_lbl.setStyleSheet(
-            f"font-size: 13px; font-weight: bold; color: {self._palette['text_primary']}; border: none;"
-        )
         rf_layout.addWidget(self._chart_title_lbl)
 
         self._doughnut = _DoughnutChart()
@@ -258,12 +247,6 @@ class OverviewPanel(QWidget):
         rf_layout.addLayout(self._build_legend())
         mid.addWidget(self._doughnut_frame, stretch=1)
         return mid
-
-    def _update_doughnut_frame_style(self) -> None:
-        p = self._palette
-        self._doughnut_frame.setStyleSheet(
-            f"background: {p['card_bg']}; border: 1px solid {p['border']}; border-radius: 6px;"
-        )
 
     def _build_metric_cards(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -281,17 +264,13 @@ class OverviewPanel(QWidget):
     def _build_breakdown_frame(self) -> QFrame:
         p = self._palette
         self._breakdown_frame = QFrame()
-        self._breakdown_frame.setStyleSheet(
-            f"QFrame {{ background: {p['card_bg']}; border: 1px solid {p['border']}; border-radius: 6px; }}"
-        )
+        self._breakdown_frame.setObjectName("card")
         layout = QVBoxLayout(self._breakdown_frame)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
 
         self._breakdown_title = QLabel("Violation Breakdown")
-        self._breakdown_title.setStyleSheet(
-            f"font-size: 13px; font-weight: bold; color: {p['text_primary']}; border: none;"
-        )
+        self._breakdown_title.setObjectName("sectionTitle")
         layout.addWidget(self._breakdown_title)
 
         self._bars: dict[str, tuple[QLabel, QProgressBar]] = {}
@@ -299,18 +278,18 @@ class OverviewPanel(QWidget):
             row = QHBoxLayout()
             row.setSpacing(8)
 
+            # Created in a loop and never stored — an object name is what makes
+            # this re-themeable (previously it kept build-time colours forever).
             lbl = QLabel(label_text)
+            lbl.setObjectName("breakdownLabel")
             lbl.setFixedWidth(175)
-            lbl.setStyleSheet(f"color: {p['text_primary']}; font-size: 12px; border: none;")
             row.addWidget(lbl)
 
             count_lbl = QLabel("0")
+            count_lbl.setObjectName("breakdownCount")
             count_lbl.setFixedWidth(32)
             count_lbl.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            count_lbl.setStyleSheet(
-                f"color: {p['text_primary']}; font-weight: bold; font-size: 13px; border: none;"
             )
             row.addWidget(count_lbl)
 
@@ -346,11 +325,13 @@ class OverviewPanel(QWidget):
             ("Medium",   "#f59e0b"),
             ("Low",      "#22c55e"),
         ]:
+            # Dot keeps its severity colour (theme-invariant); the text label is
+            # loop-local with no stored reference, so it is themed by name.
             dot = QLabel("●")
             dot.setStyleSheet(f"color: {color}; border: none; font-size: 14px;")
             legend.addWidget(dot)
             txt = QLabel(label)
-            txt.setStyleSheet(f"color: {self._palette['text_primary']}; font-size: 11px; border: none;")
+            txt.setObjectName("legendText")
             legend.addWidget(txt)
         legend.addStretch()
         return legend
@@ -359,9 +340,7 @@ class OverviewPanel(QWidget):
         footer = QHBoxLayout()
         footer.addStretch()
         self._last_updated = QLabel("")
-        self._last_updated.setStyleSheet(
-            f"color: {self._palette['text_secondary']}; font-size: 12px;"
-        )
+        self._last_updated.setObjectName("lastUpdated")
         footer.addWidget(self._last_updated)
         return footer
 
@@ -370,31 +349,22 @@ class OverviewPanel(QWidget):
     # ------------------------------------------------------------------
 
     def apply_theme(self, palette: dict) -> None:
+        """Re-theme only what the app stylesheet cannot reach.
+
+        Every label/frame here is styled by object name in theme.py, so this
+        handles just the per-instance and custom-painted pieces.
+        """
         self._palette = palette
         p = palette
 
-        self.setStyleSheet(f"background: {p['content_bg']};")
-
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {p['text_primary']};"
-        )
-        self._host_lbl.setStyleSheet(f"color: {p['text_primary']};")
-
+        # Per-card accent border-left cannot be a shared QSS rule.
         for card in (self._card_total, self._card_critical,
                      self._card_high, self._card_medium, self._card_low):
             card._apply_palette(p)
 
-        self._breakdown_frame.setStyleSheet(
-            f"QFrame {{ background: {p['card_bg']}; border: 1px solid {p['border']}; border-radius: 6px; }}"
-        )
-        self._breakdown_title.setStyleSheet(
-            f"font-size: 13px; font-weight: bold; color: {p['text_primary']}; border: none;"
-        )
-        for key, (count_lbl, bar) in self._bars.items():
-            count_lbl.setStyleSheet(
-                f"color: {p['text_primary']}; font-weight: bold; font-size: 13px; border: none;"
-            )
-            # Progress bar background updated; chunk color is fixed (violation type colour)
+        # Progress-bar chunk colour is per violation type (theme-invariant),
+        # but the trough colour follows the palette.
+        for key, (_count_lbl, bar) in self._bars.items():
             _, _, color = next(d for d in self._BAR_DEFS if d[0] == key)
             bar.setStyleSheet(f"""
                 QProgressBar {{
@@ -405,12 +375,8 @@ class OverviewPanel(QWidget):
                 }}
             """)
 
-        self._update_doughnut_frame_style()
-        self._chart_title_lbl.setStyleSheet(
-            f"font-size: 13px; font-weight: bold; color: {p['text_primary']}; border: none;"
-        )
+        # Custom QPainter widget — repaints with the new palette.
         self._doughnut.set_palette(p)
-        self._last_updated.setStyleSheet(f"color: {p['text_secondary']}; font-size: 12px;")
 
     # ------------------------------------------------------------------
     # Data loading

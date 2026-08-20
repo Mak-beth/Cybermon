@@ -30,103 +30,16 @@ from PyQt6.QtWidgets import (
 
 from src.gui import theme as _theme
 
-_PURPLE = "#7c3aed"
-_BORDER = "#e5e7eb"
-
-
-def _make_style(palette: dict) -> str:
-    bg    = palette["content_bg"]
-    card  = palette["card_bg"]
-    text  = palette["text_primary"]
-    muted = palette["text_secondary"]
-    bdr   = palette["border"]
-    inp   = palette["input_bg"]
-    return f"""
-    QWidget#settings_root {{ background: {bg}; }}
-    QFrame#card {{
-        background: {card};
-        border: 1px solid {bdr};
-        border-radius: 8px;
-    }}
-    QLabel {{ color: {text}; font-size: 13px; }}
-    QLabel#section {{
-        color: {muted};
-        font-size: 11px;
-        font-weight: bold;
-        letter-spacing: 0.5px;
-    }}
-    QLineEdit, QSpinBox, QTimeEdit, QComboBox, QPlainTextEdit {{
-        border: 1px solid {bdr};
-        border-radius: 4px;
-        padding: 5px 8px;
-        background: {inp};
-        color: {text};
-        font-size: 13px;
-    }}
-    QLineEdit:focus, QSpinBox:focus, QTimeEdit:focus, QComboBox:focus,
-    QPlainTextEdit:focus {{
-        border-color: {_PURPLE};
-    }}
-    QSpinBox::up-button, QTimeEdit::up-button {{
-        subcontrol-origin: border;
-        subcontrol-position: top right;
-        width: 20px;
-        border-left: 1px solid {bdr};
-        border-bottom: 1px solid {bdr};
-        border-top-right-radius: 4px;
-        background: {card};
-    }}
-    QSpinBox::up-button:hover, QTimeEdit::up-button:hover {{ background: {bdr}; }}
-    QSpinBox::up-button:pressed, QTimeEdit::up-button:pressed {{ background: {muted}; }}
-    QSpinBox::down-button, QTimeEdit::down-button {{
-        subcontrol-origin: border;
-        subcontrol-position: bottom right;
-        width: 20px;
-        border-left: 1px solid {bdr};
-        border-top: 1px solid {bdr};
-        border-bottom-right-radius: 4px;
-        background: {card};
-    }}
-    QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {bdr}; }}
-    QSpinBox::down-button:pressed, QTimeEdit::down-button:pressed {{ background: {muted}; }}
-    QSpinBox::up-arrow, QTimeEdit::up-arrow {{ width: 8px; height: 8px; }}
-    QSpinBox::down-arrow, QTimeEdit::down-arrow {{ width: 8px; height: 8px; }}
-    QPushButton#save {{
-        background: {_PURPLE};
-        color: white;
-        border: none;
-        border-radius: 4px;
-        padding: 8px 20px;
-        font-size: 13px;
-        font-weight: bold;
-    }}
-    QPushButton#save:hover {{ background: #6d28d9; }}
-    QPushButton#rerun {{
-        background: {card};
-        color: {muted};
-        border: 1px solid {bdr};
-        border-radius: 4px;
-        padding: 8px 20px;
-        font-size: 13px;
-    }}
-    QPushButton#rerun:hover {{ background: {bdr}; }}
-    QCheckBox {{ color: {text}; font-size: 13px; }}
-    """
-
-
 def _section(text: str, palette: dict) -> QLabel:
     lbl = QLabel(text)
-    lbl.setObjectName("section")
-    lbl.setStyleSheet(
-        f"color: {palette['text_secondary']}; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;"
-    )
+    lbl.setObjectName("section")   # themed by the app stylesheet
     return lbl
 
 
 def _divider(palette: dict) -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
-    f.setStyleSheet(f"color: {palette['border']};")
+    f.setObjectName("divider")   # themed by the app stylesheet
     f.setFixedHeight(1)
     return f
 
@@ -142,16 +55,13 @@ class SettingsPanel(QWidget):
         self._config_path = config_path
         self._palette = _theme.get_active()
         self.setObjectName("settings_root")
-        self.setStyleSheet(_make_style(self._palette))
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(16)
 
         title = QLabel("Settings")
-        title.setStyleSheet(
-            f"font-size: 20px; font-weight: bold; color: {self._palette['text_primary']};"
-        )
+        title.setObjectName("panelTitle")
         outer.addWidget(title)
 
         scroll = QScrollArea()
@@ -289,7 +199,7 @@ class SettingsPanel(QWidget):
         )
 
         note = QLabel("Changes take effect on the next pipeline run or log file scan.")
-        note.setStyleSheet(f"color: {p['text_secondary']}; font-size: 12px;")
+        note.setObjectName("mutedText")
         scoring_layout.addWidget(note)
         layout.addWidget(scoring_card)
 
@@ -344,8 +254,8 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------
 
     def apply_theme(self, palette: dict) -> None:
+        """No-op: colours come from the app stylesheet. Kept for callers."""
         self._palette = palette
-        self.setStyleSheet(_make_style(palette))
 
     # ------------------------------------------------------------------
     # Actions
@@ -389,10 +299,9 @@ class SettingsPanel(QWidget):
         cfg["scoring"]["rules"]["high_impact_resources"] = _parse_list(self._high_resources_input)
         cfg["scoring"]["rules"]["med_impact_resources"]  = _parse_list(self._med_resources_input)
 
-        # Theme preference
+        # Theme preference is NOT written here: it is a UI setting persisted
+        # to QSettings by theme.apply_theme(). config.yaml holds detection rules.
         new_theme_name = self._theme_combo.currentText().lower()
-        cfg.setdefault("ui", {})
-        cfg["ui"]["theme"] = new_theme_name
 
         with open(self._config_path, "w") as f:
             yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)

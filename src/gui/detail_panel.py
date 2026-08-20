@@ -52,6 +52,9 @@ class DetailPanel(QDialog):
         super().__init__(parent)
         self._violation_id = violation_id
         self._v = get_violation_by_id(violation_id)
+        # TODO: convert to object-name QSS for consistency with the rest of the
+        # GUI. Correct as-is because this dialog is rebuilt on every row click,
+        # so it always picks up the current theme.
         self._palette = _theme.get_active()   # snapshot current theme at open time
         self._build_ui()
 

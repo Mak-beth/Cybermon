@@ -87,21 +87,28 @@ def _build_wizard():
         QWizardPage,
     )
 
-    # Palette
-    _PURPLE = "#7c3aed"
-    _MUTED  = "#6b7280"
-    _TEXT   = "#1f2937"
-    _BORDER = "#e5e7eb"
+    from src.gui import theme as _theme
+
+    # Palette — taken from the active theme so the wizard matches the app.
+    # (The wizard is built after the theme is initialised at startup.)
+    _p      = _theme.get_active()
+    _PURPLE = _theme.ACCENT
+    _MUTED  = _p["text_secondary"]
+    _TEXT   = _p["text_primary"]
+    _BORDER = _p["border"]
+    _BG     = _p["content_bg"]
+    _CARD   = _p["card_bg"]
+    _INPUT  = _p["input_bg"]
 
     _BASE_STYLE = f"""
-        QWizard {{ background: #f3f4f6; }}
-        QWizardPage {{ background: #f3f4f6; }}
+        QWizard {{ background: {_BG}; }}
+        QWizardPage {{ background: {_BG}; }}
         QLabel {{ color: {_TEXT}; }}
         QLineEdit, QSpinBox, QTimeEdit {{
             border: 1px solid {_BORDER};
             border-radius: 4px;
             padding: 6px 8px;
-            background: white;
+            background: {_INPUT};
             color: {_TEXT};
             font-size: 13px;
         }}
@@ -165,19 +172,19 @@ def _build_wizard():
     _PAGE_CONFIRM    = 3
 
     class _ModeCard(QPushButton):
-        _STYLE = """
-            QPushButton {
-                border: 2px solid #e5e7eb;
+        _STYLE = f"""
+            QPushButton {{
+                border: 2px solid {_BORDER};
                 border-radius: 8px;
-                background: white;
-                color: #1f2937;
+                background: {_CARD};
+                color: {_TEXT};
                 text-align: left;
                 padding: 20px 24px;
                 font-size: 14px;
                 font-weight: bold;
-            }
-            QPushButton:hover  { border-color: #7c3aed; }
-            QPushButton:checked { border-color: #7c3aed; background: #f5f3ff; }
+            }}
+            QPushButton:hover  {{ border-color: {_PURPLE}; }}
+            QPushButton:checked {{ border-color: {_PURPLE}; background: {_p['table_selected']}; }}
         """
 
         def __init__(self, title, subtitle, parent=None):
@@ -429,8 +436,8 @@ def _build_wizard():
             self._summary = QLabel()
             self._summary.setWordWrap(True)
             self._summary.setStyleSheet(
-                "background: white; border: 1px solid #e5e7eb; border-radius: 6px;"
-                " padding: 16px; font-size: 13px; color: #1f2937;"
+                f"background: {_CARD}; border: 1px solid {_BORDER}; border-radius: 6px;"
+                f" padding: 16px; font-size: 13px; color: {_TEXT};"
             )
             layout = QVBoxLayout(self)
             layout.addWidget(self._summary)

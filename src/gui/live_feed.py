@@ -48,12 +48,10 @@ class _FeedEntry(QFrame):
 
     def __init__(self, violation: dict, parent=None):
         super().__init__(parent)
-        palette = _theme.get_active()
+        # Styled entirely by object name, so entries already on screen re-theme
+        # with the rest of the app instead of keeping their build-time colours.
+        self.setObjectName("card")
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            f"QFrame {{ background: {palette['card_bg']}; "
-            f"border: 1px solid {palette['border']}; border-radius: 4px; }}"
-        )
         self.setFixedHeight(40)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -76,13 +74,13 @@ class _FeedEntry(QFrame):
         # Violation type
         vtype = violation.get("violation_type", "").replace("_", " ").title()
         type_lbl = QLabel(vtype)
-        type_lbl.setStyleSheet(f"color: {palette['text_primary']}; font-size: 12px;")
+        type_lbl.setObjectName("breakdownLabel")
         type_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout.addWidget(type_lbl, stretch=1)
 
         # Source host
         host_lbl = QLabel(violation.get("source_host", ""))
-        host_lbl.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 12px;")
+        host_lbl.setObjectName("mutedText")
         host_lbl.setFixedWidth(140)
         layout.addWidget(host_lbl)
 
@@ -90,7 +88,7 @@ class _FeedEntry(QFrame):
         ts_raw = str(violation.get("timestamp", ""))
         ts_display = ts_raw[11:19] if len(ts_raw) >= 19 else ts_raw[:19]
         time_lbl = QLabel(ts_display)
-        time_lbl.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 11px;")
+        time_lbl.setObjectName("legendText")
         time_lbl.setFixedWidth(60)
         layout.addWidget(time_lbl)
 
@@ -129,46 +127,28 @@ class LiveFeedPanel(QWidget):
         root.setSpacing(10)
 
         # --- Header ---
-        p = _theme.get_active()
         hdr = QHBoxLayout()
         hdr.setSpacing(10)
 
         self._title_lbl = QLabel("Live Feed")
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {p['text_primary']};"
-        )
+        self._title_lbl.setObjectName("panelTitle")
         hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
         self._status_lbl = QLabel("Watching for new violations...")
-        self._status_lbl.setStyleSheet(f"color: {p['text_secondary']}; font-size: 12px;")
+        self._status_lbl.setObjectName("mutedText")
         hdr.addWidget(self._status_lbl)
 
         self._pause_btn = QPushButton("Pause")
         self._pause_btn.setCheckable(True)
         self._pause_btn.setFixedWidth(90)
-        self._pause_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f5f9; color: #374151;
-                border: 1px solid #e2e8f0; border-radius: 4px;
-                padding: 5px 10px; font-size: 12px;
-            }
-            QPushButton:checked { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
-            QPushButton:hover   { background: #e2e8f0; }
-        """)
+        self._pause_btn.setObjectName("secondary")
         self._pause_btn.clicked.connect(self._on_pause_toggled)
         hdr.addWidget(self._pause_btn)
 
         clear_btn = QPushButton("Clear")
         clear_btn.setFixedWidth(80)
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background: #fee2e2; color: #991b1b;
-                border: 1px solid #fca5a5; border-radius: 4px;
-                padding: 5px 10px; font-size: 12px;
-            }
-            QPushButton:hover { background: #fecaca; }
-        """)
+        clear_btn.setObjectName("secondary")
         clear_btn.clicked.connect(self._clear)
         hdr.addWidget(clear_btn)
 
@@ -178,11 +158,9 @@ class LiveFeedPanel(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._scroll.setStyleSheet(f"background: {p['content_bg']};")
         scroll = self._scroll
 
         self._feed_widget = QWidget()
-        self._feed_widget.setStyleSheet(f"background: {p['content_bg']};")
         self._feed_layout = QVBoxLayout(self._feed_widget)
         self._feed_layout.setContentsMargins(0, 0, 0, 0)
         self._feed_layout.setSpacing(4)
@@ -195,7 +173,7 @@ class LiveFeedPanel(QWidget):
         # --- Empty-state hint (shown until first entry arrives) ---
         self._empty_lbl = QLabel("No new violations detected yet.")
         self._empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_lbl.setStyleSheet(f"color: {p['text_secondary']}; font-size: 14px;")
+        self._empty_lbl.setObjectName("emptyState")
         # Place it inside the scroll area's content widget
         self._feed_layout.insertWidget(0, self._empty_lbl)
 
@@ -204,21 +182,13 @@ class LiveFeedPanel(QWidget):
     # ------------------------------------------------------------------
 
     def apply_theme(self, palette: dict) -> None:
-        bg = palette["content_bg"]
-        self.setStyleSheet(f"background: {bg};")
-        self._scroll.setStyleSheet(f"background: {bg};")
-        self._feed_widget.setStyleSheet(f"background: {bg};")
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {palette['text_primary']};"
-        )
-        self._status_lbl.setStyleSheet(
-            f"color: {palette['text_secondary']}; font-size: 12px;"
-        )
-        self._empty_lbl.setStyleSheet(
-            f"color: {palette['text_secondary']}; font-size: 14px;"
-        )
-        # Existing feed entries are transient; new ones will use the updated theme
-        # via _FeedEntry reading theme.get_active() at construction time.
+        """No-op: every colour in this panel now comes from the app stylesheet.
+
+        Feed entries are styled by object name, so cards already on screen
+        re-theme too (previously only newly-arriving entries picked up a switch).
+        Kept so callers that re-theme panels generically do not break.
+        """
+        return
 
     # ------------------------------------------------------------------
     # Polling and entry management

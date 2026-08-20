@@ -24,27 +24,30 @@ from src.gui import theme as _theme
 pg.setConfigOption("crashWarning", False)
 
 # ---------------------------------------------------------------------------
-# Colour / style constants
+# Series colours — one per violation type, theme-invariant (semantic).
+# All other colours come from src.gui.theme via apply_theme().
 # ---------------------------------------------------------------------------
-_BG_COLOUR     = "#f8f9fa"      # matches application content background
-_GRID_COLOUR   = (220, 220, 220, 80)
-
 _LINES = [
-    ("failed_logins",       "Failed Logins",       "#7c3aed"),
-    ("unauthorized_access", "Unauthorized Access",  "#ef4444"),
-    ("off_hours_login",     "Off-Hours Logins",     "#f59e0b"),
+    ("failed_logins",       "Failed Logins",       _theme.ACCENT),
+    ("unauthorized_access", "Unauthorized Access", _theme.SEVERITY["High"]),
+    ("off_hours_login",     "Off-Hours Logins",    _theme.SEVERITY["Medium"]),
 ]
 
 
 def _make_plot(title: str = "") -> pg.PlotWidget:
-    """Return a styled PlotWidget."""
-    pw = pg.PlotWidget(background=_BG_COLOUR)
+    """Return a PlotWidget seeded with the active palette.
+
+    apply_theme() re-applies all of this on every theme change; seeding here
+    just avoids a flash of the wrong colour before the first call.
+    """
+    p = _theme.get_active()
+    pw = pg.PlotWidget(background=p["content_bg"])
     pi = pw.getPlotItem()
-    pi.setTitle(title, color="#374151", size="12pt")
+    pi.setTitle(title, color=p["text_primary"], size="12pt")
     pi.showGrid(x=True, y=True, alpha=0.3)
-    pi.getAxis("left").setLabel("Violations", color="#374151")
-    pi.getAxis("left").setPen(pg.mkPen("#9ca3af"))
-    pi.getAxis("bottom").setPen(pg.mkPen("#9ca3af"))
+    pi.getAxis("left").setLabel("Violations", color=p["text_primary"])
+    pi.getAxis("left").setPen(pg.mkPen(p["text_secondary"]))
+    pi.getAxis("bottom").setPen(pg.mkPen(p["text_secondary"]))
     pi.setMenuEnabled(False)
     # Ensure y-axis starts at 0
     pi.setYRange(0, 1)
@@ -68,6 +71,10 @@ class TrendPanel(QWidget):
         self._build_ui()
         self.refresh()
 
+        # PyQtGraph internals are unreachable from QSS — re-theme in code.
+        _theme.register_chart(self.apply_theme)
+        self.apply_theme(_theme.get_active())
+
         # Poll so today's / this week's new violations appear without a manual
         # Refresh. Reuses the existing trend queries as-is (no window change).
         self._timer = QTimer(self)
@@ -87,34 +94,19 @@ class TrendPanel(QWidget):
         # --- Header ---
         hdr = QHBoxLayout()
         self._title_lbl = QLabel("Trend")
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {_theme.get_active()['text_primary']};"
-        )
+        self._title_lbl.setObjectName("panelTitle")
         hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
         refresh_btn = QPushButton("Refresh")
+        refresh_btn.setObjectName("primary")
         refresh_btn.setFixedWidth(100)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background: #7c3aed; color: white;
-                border: none; border-radius: 4px;
-                padding: 5px 10px; font-size: 13px;
-            }
-            QPushButton:hover   { background: #6d28d9; }
-            QPushButton:pressed { background: #5b21b6; }
-        """)
         refresh_btn.clicked.connect(self.refresh)
         hdr.addWidget(refresh_btn)
         root.addLayout(hdr)
 
-        # --- Tab widget ---
+        # --- Tab widget (styled by the app stylesheet) ---
         self._tabs = QTabWidget()
-        self._tabs.setStyleSheet("""
-            QTabWidget::pane   { border: 1px solid #e2e8f0; border-radius: 4px; }
-            QTabBar::tab       { padding: 6px 18px; color: #374151; }
-            QTabBar::tab:selected { background: #7c3aed; color: white; border-radius: 2px; }
-        """)
         root.addWidget(self._tabs, stretch=1)
 
         self._tabs.addTab(self._build_today_tab(), "Today by Hour")
@@ -192,34 +184,41 @@ class TrendPanel(QWidget):
     # ------------------------------------------------------------------
 
     def apply_theme(self, palette: dict) -> None:
-        bg = palette["content_bg"]
-        text = palette["text_primary"]
+        """Re-theme PyQtGraph internals.
+
+        A Qt stylesheet cannot reach figure/axes/grid/legend colours — they must
+        be set in code and the canvas repainted.
+        """
+        bg    = palette["content_bg"]
+        text  = palette["text_primary"]
         muted = palette["text_secondary"]
-        bdr = palette["border"]
 
-        self.setStyleSheet(f"background: {bg};")
+        # Panel background and tab styling now come from the app stylesheet.
+        # Key off the active theme NAME, not palette identity (a copied or
+        # rebuilt palette would silently fail an `is` comparison).
+        grid_alpha = 0.25 if _theme.get_active_name() == "dark" else 0.3
 
-        # Update title label
-        self._title_lbl.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {text};"
-        )
-
-        # Tab widget
-        self._tabs.setStyleSheet(f"""
-            QTabWidget::pane   {{ border: 1px solid {bdr}; border-radius: 4px; background: {bg}; }}
-            QTabBar::tab       {{ padding: 6px 18px; color: {muted}; background: {palette['card_bg']}; }}
-            QTabBar::tab:selected {{ background: #7c3aed; color: white; border-radius: 2px; }}
-        """)
-
-        # PyQtGraph plots — update background colour
-        for plot in (self._today_plot, self._week_plot):
-            plot.setBackground(bg)
+        for plot, x_label in ((self._today_plot, "Hour of Day"),
+                              (self._week_plot,  "Date")):
+            plot.setBackground(bg)                              # figure facecolor
             pi = plot.getPlotItem()
-            pi.setTitle(pi.titleLabel.text, color=text, size="12pt")
-            pi.getAxis("left").setPen(pg.mkPen(muted))
-            pi.getAxis("bottom").setPen(pg.mkPen(muted))
-            pi.getAxis("left").setTextPen(pg.mkPen(muted))
-            pi.getAxis("bottom").setTextPen(pg.mkPen(muted))
+            pi.setTitle(pi.titleLabel.text, color=text, size="12pt")   # title
+            pi.showGrid(x=True, y=True, alpha=grid_alpha)              # grid
+
+            for side, label in (("left", "Violations"), ("bottom", x_label)):
+                ax = pi.getAxis(side)
+                ax.setPen(pg.mkPen(muted))          # axis line
+                ax.setTextPen(pg.mkPen(muted))      # tick labels
+                ax.setLabel(label, color=text)      # axis label (was baked #374151)
+
+            # Legend text/background are fixed at construction — update directly.
+            legend = pi.legend
+            if legend is not None:
+                legend.setLabelTextColor(text)
+                legend.setBrush(pg.mkBrush(palette["card_bg"]))
+                legend.setPen(pg.mkPen(palette["border"]))
+
+            plot.update()   # repaint (PyQtGraph's canvas.draw() equivalent)
 
     # ------------------------------------------------------------------
     # Data loading

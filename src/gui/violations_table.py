@@ -100,12 +100,12 @@ class ViolationsTable(QWidget):
         top_bar.setSpacing(10)
 
         title = QLabel("Violations")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1e293b;")
+        title.setObjectName("panelTitle")
         top_bar.addWidget(title)
         top_bar.addStretch()
 
         filter_label = QLabel("Host:")
-        filter_label.setStyleSheet("color: #374151;")
+        filter_label.setObjectName("fieldLabel")
         top_bar.addWidget(filter_label)
 
         self._host_filter = QComboBox()
@@ -114,36 +114,14 @@ class ViolationsTable(QWidget):
         top_bar.addWidget(self._host_filter)
 
         export_btn = QPushButton("Export CSV")
+        export_btn.setObjectName("secondary")
         export_btn.setFixedWidth(110)
-        export_btn.setStyleSheet("""
-            QPushButton {
-                background: #f1f5f9;
-                color: #374151;
-                border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover  { background: #e2e8f0; }
-            QPushButton:pressed { background: #cbd5e1; }
-        """)
         export_btn.clicked.connect(self._export_csv)
         top_bar.addWidget(export_btn)
 
         refresh_btn = QPushButton("Refresh")
+        refresh_btn.setObjectName("primary")
         refresh_btn.setFixedWidth(90)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background: #7c3aed;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover   { background: #6d28d9; }
-            QPushButton:pressed { background: #5b21b6; }
-        """)
         refresh_btn.clicked.connect(self.refresh)
         top_bar.addWidget(refresh_btn)
 
@@ -160,27 +138,7 @@ class ViolationsTable(QWidget):
         self._table.setSortingEnabled(True)
         self._table.verticalHeader().setVisible(False)
         self._table.setShowGrid(True)
-        self._table.setStyleSheet("""
-            QTableWidget {
-                border: 1px solid #e2e8f0;
-                background: #ffffff;
-                alternate-background-color: #f8fafc;
-                gridline-color: #e2e8f0;
-                font-size: 13px;
-            }
-            QHeaderView::section {
-                background: #f1f5f9;
-                color: #374151;
-                font-weight: bold;
-                padding: 6px;
-                border: none;
-                border-bottom: 2px solid #e2e8f0;
-            }
-            QTableWidget::item:selected {
-                background: #ede9fe;
-                color: #1e293b;
-            }
-        """)
+        # Table, header and selection colours come from the app stylesheet.
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(_COL_SEVERITY,  QHeaderView.ResizeMode.ResizeToContents)
@@ -201,7 +159,7 @@ class ViolationsTable(QWidget):
             "No violations detected yet.\nCyberMon is monitoring your logs."
         )
         _empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        _empty_lbl.setStyleSheet("color: #6b7280; font-size: 15px;")
+        _empty_lbl.setObjectName("emptyState")
         _ev.addWidget(_empty_lbl)
 
         # Stack: index 0 = table, index 1 = empty state
@@ -212,7 +170,7 @@ class ViolationsTable(QWidget):
 
         # --- Status bar ---
         self._status = QLabel("")
-        self._status.setStyleSheet("color: #6b7280; font-size: 12px;")
+        self._status.setObjectName("mutedText")
         layout.addWidget(self._status)
 
     # ------------------------------------------------------------------
@@ -286,34 +244,28 @@ class ViolationsTable(QWidget):
         badge.setData(Qt.ItemDataRole.UserRole, v.get("id"))
         self._table.setItem(row, _COL_SEVERITY, badge)
 
-        _CELL_FG = QColor(_theme.get_active()["table_text"])
-
         score_val = v.get("risk_score", 0)
         score_item = QTableWidgetItem()
         score_item.setData(Qt.ItemDataRole.DisplayRole, score_val)
         score_item.setTextAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        score_item.setForeground(_CELL_FG)
         score_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_SCORE, score_item)
 
         vtype_item = QTableWidgetItem(
             v.get("violation_type", "").replace("_", " ").title()
         )
-        vtype_item.setForeground(_CELL_FG)
         vtype_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_TYPE, vtype_item)
 
         host_item = QTableWidgetItem(v.get("source_host", ""))
-        host_item.setForeground(_CELL_FG)
         host_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_HOST, host_item)
 
         ts_raw = str(v.get("timestamp", ""))
         ts_display = ts_raw[:19].replace("T", " ") if ts_raw else ""
         ts_item = QTableWidgetItem(ts_display)
-        ts_item.setForeground(_CELL_FG)
         ts_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_TIMESTAMP, ts_item)
 
@@ -321,7 +273,6 @@ class ViolationsTable(QWidget):
         if len(action) > _MAX_ACTION_LEN:
             action = action[:_MAX_ACTION_LEN - 1] + "…"
         action_item = QTableWidgetItem(action)
-        action_item.setForeground(_CELL_FG)
         action_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
         self._table.setItem(row, _COL_ACTION, action_item)
 
@@ -330,32 +281,11 @@ class ViolationsTable(QWidget):
     # ------------------------------------------------------------------
 
     def apply_theme(self, palette: dict) -> None:
-        """Reapply all stylesheets and reload rows with updated cell colours."""
-        self.setStyleSheet(f"background: {palette['content_bg']}; color: {palette['text_primary']};")
-        self._table.setStyleSheet(f"""
-            QTableWidget {{
-                border: 1px solid {palette['border']};
-                background: {palette['card_bg']};
-                alternate-background-color: {palette['table_alt']};
-                gridline-color: {palette['border']};
-                font-size: 13px;
-                color: {palette['table_text']};
-            }}
-            QHeaderView::section {{
-                background: {palette['card_bg']};
-                color: {palette['text_primary']};
-                font-weight: bold;
-                padding: 6px;
-                border: none;
-                border-bottom: 2px solid {palette['border']};
-            }}
-            QTableWidget::item:selected {{
-                background: {palette['table_selected']};
-                color: {palette['text_primary']};
-            }}
-        """)
-        self._status.setStyleSheet(f"color: {palette['text_secondary']}; font-size: 12px;")
-        self._reload_table()
+        """No-op: every colour in this panel now comes from the app stylesheet.
+
+        Kept so callers that re-theme panels generically do not break.
+        """
+        return
 
     # ------------------------------------------------------------------
     # Event handlers
