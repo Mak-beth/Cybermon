@@ -99,6 +99,8 @@ def _build_wizard():
     _BG     = _p["content_bg"]
     _CARD   = _p["card_bg"]
     _INPUT  = _p["input_bg"]
+    _UP_ARROW   = _theme._arrow_url("up", _TEXT)
+    _DOWN_ARROW = _theme._arrow_url("down", _TEXT)
 
     _BASE_STYLE = f"""
         QWizard {{ background: {_BG}; }}
@@ -148,16 +150,10 @@ def _build_wizard():
         QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {_BORDER}; }}
         QSpinBox::down-button:pressed, QTimeEdit::down-button:pressed {{ background: {_MUTED}; }}
         QSpinBox::up-arrow, QTimeEdit::up-arrow {{
-            image: none; width: 0; height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-bottom: 5px solid {_TEXT};
+            image: url({_UP_ARROW}); width: 8px; height: 8px;
         }}
         QSpinBox::down-arrow, QTimeEdit::down-arrow {{
-            image: none; width: 0; height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid {_TEXT};
+            image: url({_DOWN_ARROW}); width: 8px; height: 8px;
         }}
     """
 

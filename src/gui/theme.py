@@ -21,8 +21,11 @@ Usage
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import QPoint, QSettings, Qt
+from PyQt6.QtGui import QColor, QPainter, QPixmap, QPolygon
 from PyQt6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
@@ -129,6 +132,58 @@ def _retheme_charts(palette: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Arrow glyphs for spin / time / combo sub-controls
+#
+# Once a widget is styled by QSS, Qt stops drawing its native sub-control
+# arrows, and QSS has no way to draw a shape (the CSS border-triangle trick
+# paints a filled box in Qt). The only reliable option is a real image, so the
+# triangles are painted with QPainter at run time — the same approach already
+# used for the window's shield icon — and cached per colour.
+# ---------------------------------------------------------------------------
+_ARROW_CACHE: dict = {}
+
+
+def _arrow_image(direction: str, colour: str) -> str:
+    """Return a filesystem path to a small triangle PNG in the given colour."""
+    key = (direction, colour)
+    cached = _ARROW_CACHE.get(key)
+    if cached and os.path.exists(cached):
+        return cached
+
+    size = 16                      # drawn 2x, displayed at 8px for crispness
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor(colour))
+    painter.setPen(Qt.PenStyle.NoPen)
+    m = 3
+    if direction == "up":
+        pts = [QPoint(size // 2, m), QPoint(size - m, size - m), QPoint(m, size - m)]
+    else:
+        pts = [QPoint(m, m), QPoint(size - m, m), QPoint(size // 2, size - m)]
+    painter.drawPolygon(QPolygon(pts))
+    painter.end()
+
+    out_dir = os.path.join(tempfile.gettempdir(), "cybermon_theme")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"arrow_{direction}_{colour.lstrip('#')}.png")
+    pm.save(path, "PNG")
+    _ARROW_CACHE[key] = path
+    return path
+
+
+def _arrow_url(direction: str, colour: str) -> str:
+    """QSS url() for an arrow glyph; empty string if it cannot be generated."""
+    try:
+        return _arrow_image(direction, colour).replace("\\", "/")
+    except Exception:
+        # No QGuiApplication yet, or read-only temp dir — fall back to no image.
+        logger.warning("theme: could not generate arrow glyph", exc_info=True)
+        return ""
+
+
+# ---------------------------------------------------------------------------
 # The single app-wide stylesheet
 # ---------------------------------------------------------------------------
 
@@ -143,6 +198,9 @@ def build_app_stylesheet(palette: dict) -> str:
     alt   = palette["table_alt"]
     sel   = palette["table_selected"]
     side  = palette["sidebar_bg"]
+
+    up_arrow   = _arrow_url("up", text)
+    down_arrow = _arrow_url("down", text)
 
     return f"""
     /* ---------- base ---------- */
@@ -230,25 +288,14 @@ def build_app_stylesheet(palette: dict) -> str:
     QSpinBox::up-button:hover, QTimeEdit::up-button:hover,
     QSpinBox::down-button:hover, QTimeEdit::down-button:hover {{ background: {bdr}; }}
 
-    /* Arrow glyphs drawn as CSS triangles.
-       Styling ::up-button/::down-button suppresses Qt's native arrow, and a
-       bare width/height leaves it blank — the glyph must be drawn explicitly.
-       Border-triangles need no image asset and follow the palette. */
+    /* Arrow glyphs. Styling ::up-button/::down-button suppresses Qt's native
+       arrow, and QSS cannot draw a shape (border-triangles paint a filled box
+       in Qt), so a generated PNG is supplied. Colour follows the palette. */
     QSpinBox::up-arrow, QTimeEdit::up-arrow {{
-        image: none; width: 0; height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-bottom: 5px solid {text};
+        image: url({up_arrow}); width: 8px; height: 8px;
     }}
     QSpinBox::down-arrow, QTimeEdit::down-arrow {{
-        image: none; width: 0; height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-top: 5px solid {text};
-    }}
-    QSpinBox::up-arrow:disabled, QSpinBox::down-arrow:disabled,
-    QTimeEdit::up-arrow:disabled, QTimeEdit::down-arrow:disabled {{
-        border-bottom-color: {muted}; border-top-color: {muted};
+        image: url({down_arrow}); width: 8px; height: 8px;
     }}
 
     /* ---------- combo box (closed box AND popup list) ---------- */
@@ -269,15 +316,9 @@ def build_app_stylesheet(palette: dict) -> str:
     QComboBox::drop-down:hover   {{ background: {bdr}; }}
     QComboBox::drop-down:pressed {{ background: {muted}; }}
     QComboBox::down-arrow {{
-        image: none; width: 0; height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid {text};
+        image: url({down_arrow}); width: 10px; height: 10px;
     }}
-    QComboBox::down-arrow:on {{
-        border-top: none;
-        border-bottom: 6px solid {text};
-    }}
+    QComboBox::down-arrow:on {{ image: url({up_arrow}); }}
     /* Popup list. Both the view AND its items need rules: styling only the
        view leaves item text painted by the native palette (dark-on-dark). */
     QComboBox QAbstractItemView {{
