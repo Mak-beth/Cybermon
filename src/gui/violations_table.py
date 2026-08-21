@@ -26,6 +26,10 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.data_access import (
+    SORT_NEWEST,
+    SORT_RISK_ASC,
+    SORT_RISK_DESC,
+    SORT_RISK_DESC_OLDEST,
     get_all_violations,
     get_unique_hosts,
     get_violations_for_export,
@@ -63,8 +67,19 @@ _CSV_COLUMNS = [
 ]
 
 
+# Sort options offered in the toolbar, in display order. The first entry is the
+# default: highest risk first, which is what "prioritisation" means for the
+# severity model (risk_score = likelihood x impact).
+_SORT_MODES: list[tuple[str, str]] = [
+    ("Highest risk first",   SORT_RISK_DESC),
+    ("Highest risk, oldest", SORT_RISK_DESC_OLDEST),
+    ("Lowest risk first",    SORT_RISK_ASC),
+    ("Newest first",         SORT_NEWEST),
+]
+
+
 class ViolationsTable(QWidget):
-    """Panel showing all violations sorted by risk score descending."""
+    """Panel showing all violations, ordered by the selected sort mode."""
 
     # Auto-refresh cadence — matches the Overview / Live Feed polling pattern.
     _REFRESH_INTERVAL = 5_000   # 5 s
@@ -72,10 +87,12 @@ class ViolationsTable(QWidget):
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
         self._config = config
-        # Default sort is newest-first; preserved across auto-refreshes and
-        # updated whenever the user clicks a column header.
+        # Row order is driven by the sort combo (SQL-side, deterministic).
+        # A header click temporarily overrides it until the combo changes;
+        # _user_sorted tracks which of the two is currently in charge.
         self._sort_col = _COL_TIMESTAMP
         self._sort_order = Qt.SortOrder.DescendingOrder
+        self._user_sorted = False
         self._reloading = False   # guard: ignore programmatic sort signals
         self._build_ui()
         self.refresh()
@@ -113,6 +130,24 @@ class ViolationsTable(QWidget):
         self._host_filter.currentTextChanged.connect(self._on_filter_changed)
         top_bar.addWidget(self._host_filter)
 
+        # --- Sort / prioritisation control (Objective 3) ---
+        # No setStyleSheet here on purpose: QComboBox (and its popup) are styled
+        # centrally in theme.py, exactly like the settings-panel combo.
+        sort_label = QLabel("Sort:")
+        sort_label.setObjectName("fieldLabel")
+        top_bar.addWidget(sort_label)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.setFixedWidth(190)
+        for label, key in _SORT_MODES:
+            self._sort_combo.addItem(label, key)
+        self._sort_combo.setCurrentIndex(0)          # Highest risk first
+        self._sort_combo.setToolTip(
+            "Order violations by risk score (likelihood x impact) or by time."
+        )
+        self._sort_combo.currentIndexChanged.connect(self._on_sort_mode_changed)
+        top_bar.addWidget(self._sort_combo)
+
         export_btn = QPushButton("Export CSV")
         export_btn.setObjectName("secondary")
         export_btn.setFixedWidth(110)
@@ -149,7 +184,7 @@ class ViolationsTable(QWidget):
         hdr.setSectionResizeMode(_COL_ACTION,    QHeaderView.ResizeMode.Stretch)
 
         self._table.itemClicked.connect(self._on_row_clicked)
-        self._table.horizontalHeader().sortIndicatorChanged.connect(self._on_sort_changed)
+        self._table.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
 
         # --- Empty state (shown when database has no violations) ---
         _empty = QWidget()
@@ -198,20 +233,26 @@ class ViolationsTable(QWidget):
         host_arg = None if host == "All Hosts" else host
 
         self._reloading = True
+        # Keep the viewport steady across auto-refresh.
+        scroll_pos = self._table.verticalScrollBar().value()
+        # Sorting stays off while repopulating: enabling it makes Qt re-sort by
+        # the header indicator, which would discard the deterministic,
+        # tie-broken order the database just returned.
         self._table.setSortingEnabled(False)
         self._table.setRowCount(0)
 
-        rows = get_all_violations(host_filter=host_arg)
+        rows = get_all_violations(host_filter=host_arg, sort=self._current_sort_key())
 
         if rows:
             self._content_stack.setCurrentIndex(0)
             self._table.setRowCount(len(rows))
             for row_idx, v in enumerate(rows):
                 self._set_row(row_idx, v)
-            self._table.setSortingEnabled(True)
-            # Reapply the current sort (default: Timestamp DESC, or whatever
-            # column the user last clicked) so auto-refresh doesn't disturb it.
-            self._table.sortItems(self._sort_col, self._sort_order)
+            if self._user_sorted:
+                # A header click overrides the combo until the combo changes.
+                self._table.setSortingEnabled(True)
+                self._table.sortItems(self._sort_col, self._sort_order)
+            self._table.verticalScrollBar().setValue(scroll_pos)
             count = len(rows)
             self._status.setText(
                 f"{count} violation{'s' if count != 1 else ''} displayed"
@@ -223,15 +264,41 @@ class ViolationsTable(QWidget):
 
         self._reloading = False
 
-    def _on_sort_changed(self, section: int, order: Qt.SortOrder) -> None:
-        """Record a user-initiated column sort so it survives auto-refresh.
+    def _current_sort_key(self) -> str:
+        """Data-layer sort key for the current combo selection."""
+        key = self._sort_combo.currentData()
+        return key if key else _SORT_MODES[0][1]
 
-        Ignored while _reload_table is repopulating (that re-sort is our own).
+    def _on_sort_mode_changed(self, _index: int) -> None:
+        """Combo selection changed — it becomes the authority on row order."""
+        self._user_sorted = False
+        self._table.horizontalHeader().setSortIndicatorShown(False)
+        self._reload_table()
+
+    def _on_header_clicked(self, section: int) -> None:
+        """Let a header click override the combo until the combo changes.
+
+        Uses sectionClicked (not sortIndicatorChanged) because sorting is left
+        disabled while the combo governs order, and sectionClicked still fires.
         """
         if self._reloading:
             return
+        if self._user_sorted and section == self._sort_col:
+            self._sort_order = (
+                Qt.SortOrder.AscendingOrder
+                if self._sort_order == Qt.SortOrder.DescendingOrder
+                else Qt.SortOrder.DescendingOrder
+            )
+        else:
+            self._sort_order = Qt.SortOrder.DescendingOrder
         self._sort_col = section
-        self._sort_order = order
+        self._user_sorted = True
+
+        header = self._table.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(section, self._sort_order)
+        self._table.setSortingEnabled(True)
+        self._table.sortItems(self._sort_col, self._sort_order)
 
     def _set_row(self, row: int, v: dict) -> None:
         severity = v.get("severity", "")

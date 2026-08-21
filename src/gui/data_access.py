@@ -26,6 +26,31 @@ def _get_config_path() -> str:
     return os.path.join(_BASE_DIR, "config", "config.yaml")
 
 # ---------------------------------------------------------------------------
+# Violation sort orders (Objective 3 — prioritisation)
+#
+# Whitelisted ORDER BY fragments, keyed by a stable identifier. The GUI never
+# passes raw SQL: it selects a key, so nothing caller-supplied is interpolated.
+# Every entry ends with a v.id tie-break to keep ordering deterministic across
+# refreshes when risk_score and timestamp are identical.
+# ---------------------------------------------------------------------------
+SORT_RISK_DESC        = "risk_desc"          # highest risk first, newest within tier
+SORT_RISK_DESC_OLDEST = "risk_desc_oldest"   # highest risk first, oldest within tier
+SORT_RISK_ASC         = "risk_asc"           # lowest risk first
+SORT_NEWEST           = "newest"             # newest first, risk as secondary
+
+SORT_ORDERS: dict[str, str] = {
+    SORT_RISK_DESC:        "r.risk_score DESC, v.timestamp DESC, v.id DESC",
+    SORT_RISK_DESC_OLDEST: "r.risk_score DESC, v.timestamp ASC,  v.id ASC",
+    SORT_RISK_ASC:         "r.risk_score ASC,  v.timestamp DESC, v.id DESC",
+    SORT_NEWEST:           "v.timestamp DESC, r.risk_score DESC, v.id DESC",
+}
+
+# Pre-existing behaviour of get_all_violations() — unchanged for callers that
+# do not pass an explicit sort.
+DEFAULT_SORT = SORT_NEWEST
+
+
+# ---------------------------------------------------------------------------
 # Recommended actions (mirrors dashboard RECOMMENDED_RESPONSE)
 # ---------------------------------------------------------------------------
 RECOMMENDED_ACTIONS: dict[str, str] = {
@@ -67,12 +92,20 @@ def _connect() -> sqlite3.Connection:
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_all_violations(host_filter: str | None = None) -> list[dict]:
-    """Return all violations with scores, ordered by timestamp DESC (newest first).
+def get_all_violations(host_filter: str | None = None,
+                       sort: str | None = None) -> list[dict]:
+    """Return all violations with scores.
 
     Args:
         host_filter: If provided, return only violations whose source_host
                      matches this value exactly.  None returns all hosts.
+        sort:        One of SORT_ORDERS (see module constants). None keeps the
+                     pre-existing default (newest first), so existing callers
+                     are unaffected.
+
+    Every ordering ends with a tie-break on v.id, so rows with identical
+    (risk_score, timestamp) never reorder between refreshes.  This matters:
+    off_hours_login always scores exactly 6, guaranteeing large tie groups.
 
     Returns:
         List of dicts with keys:
@@ -80,27 +113,31 @@ def get_all_violations(host_filter: str | None = None) -> list[dict]:
             detail, source_host, likelihood, impact, risk_score, severity,
             recommended_action
     """
+    order_by = SORT_ORDERS.get(sort or DEFAULT_SORT, SORT_ORDERS[DEFAULT_SORT])
+
     conn = _connect()
     cur = conn.cursor()
 
+    # order_by is looked up from a fixed whitelist above — never interpolated
+    # from caller-supplied text.
     if host_filter and host_filter != "All Hosts":
-        cur.execute("""
+        cur.execute(f"""
             SELECT v.id, v.violation_type, v.timestamp, v.username,
                    v.source_ip, v.resource, v.detail, v.source_host,
                    r.likelihood, r.impact, r.risk_score, r.severity
             FROM violations v
             JOIN risk_scores r ON r.violation_id = v.id
             WHERE v.source_host = ?
-            ORDER BY v.timestamp DESC
+            ORDER BY {order_by}
         """, (host_filter,))
     else:
-        cur.execute("""
+        cur.execute(f"""
             SELECT v.id, v.violation_type, v.timestamp, v.username,
                    v.source_ip, v.resource, v.detail, v.source_host,
                    r.likelihood, r.impact, r.risk_score, r.severity
             FROM violations v
             JOIN risk_scores r ON r.violation_id = v.id
-            ORDER BY v.timestamp DESC
+            ORDER BY {order_by}
         """)
 
     rows = []
