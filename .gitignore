@@ -19,3 +19,5 @@ cybermon.log
 logs/auth.log
 logs/access.log
 logs/live/*.log
+
+*.prev
