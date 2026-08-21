@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from src.gui import config_io
 from src.gui import theme as _theme
 
 def _section(text: str, palette: dict) -> QLabel:
@@ -198,10 +199,102 @@ class SettingsPanel(QWidget):
             scoring_rules.get("med_impact_resources", ["/config", "/wp-admin"]),
         )
 
-        note = QLabel("Changes take effect on the next pipeline run or log file scan.")
-        note.setObjectName("mutedText")
-        scoring_layout.addWidget(note)
+        # --- numeric scoring values (likelihood / impact, 1-5) ---
+        def _score_row(parent_layout, label_text, key, default):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setObjectName("fieldLabel")
+            lbl.setMinimumWidth(300)
+            row.addWidget(lbl)
+            box = QSpinBox()
+            box.setRange(config_io.SCORE_MIN, config_io.SCORE_MAX)
+            value = scoring_rules.get(key, default)
+            box.setValue(value if isinstance(value, int) else default)
+            box.setFixedWidth(70)
+            row.addWidget(box)
+            row.addStretch()
+            parent_layout.addLayout(row)
+            return box
+
+        scoring_layout.addWidget(_section("SCORE VALUES (1-5)", p))
+        self._score_inputs = {}
+        for label_text, key, default in (
+            ("Failed logins - privileged user impact", "failed_login_high_user_impact", 4),
+            ("Failed logins - standard user impact",   "failed_login_default_impact", 2),
+            ("Unauthorized access - likelihood",       "unauthorized_access_default_likelihood", 3),
+            ("Unauthorized access - high resource impact",
+             "unauthorized_access_high_resource_impact", 5),
+            ("Unauthorized access - medium resource impact",
+             "unauthorized_access_med_resource_impact", 3),
+            ("Unauthorized access - other resource impact",
+             "unauthorized_access_default_impact", 2),
+            ("Off-hours login - likelihood",           "off_hours_default_likelihood", 2),
+            ("Off-hours login - privileged user impact", "off_hours_high_user_impact", 5),
+            ("Off-hours login - standard user impact", "off_hours_default_impact", 3),
+        ):
+            self._score_inputs[key] = _score_row(scoring_layout, label_text, key, default)
+
         layout.addWidget(scoring_card)
+
+        # --- Severity tier boundaries ---
+        tiers_cfg = cfg.get("scoring", {}).get("severity_tiers", {}) or {}
+        tiers_card = self._card()
+        tiers_layout = tiers_card.layout()
+        tiers_layout.addWidget(_section("SEVERITY TIER BOUNDARIES", p))
+
+        self._tier_inputs = {}
+        for tier_name, fallback in (
+            ("low", {"min": 1, "max": 4}), ("medium", {"min": 5, "max": 9}),
+            ("high", {"min": 10, "max": 16}), ("critical", {"min": 17, "max": 25}),
+        ):
+            tier = tiers_cfg.get(tier_name, fallback) or fallback
+            row = QHBoxLayout()
+            name_lbl = QLabel(tier_name.capitalize())
+            name_lbl.setObjectName("fieldLabel")
+            name_lbl.setFixedWidth(90)
+            row.addWidget(name_lbl)
+            boxes = {}
+            for bound in ("min", "max"):
+                bound_lbl = QLabel(bound)
+                bound_lbl.setObjectName("mutedText")
+                row.addWidget(bound_lbl)
+                box = QSpinBox()
+                box.setRange(config_io.TIER_MIN, config_io.TIER_MAX)
+                raw = tier.get(bound, fallback[bound])
+                box.setValue(raw if isinstance(raw, int) else fallback[bound])
+                box.setFixedWidth(70)
+                row.addWidget(box)
+                boxes[bound] = box
+            row.addStretch()
+            tiers_layout.addLayout(row)
+            self._tier_inputs[tier_name] = boxes
+
+        layout.addWidget(tiers_card)
+
+        # --- Scoped restore-defaults buttons ---
+        restore_card = self._card()
+        restore_layout = restore_card.layout()
+        restore_layout.addWidget(_section("RESTORE DEFAULTS", p))
+        restore_note = QLabel(
+            "Each button resets only its own section. Log file paths, setup "
+            "status, mode, theme and server settings are never changed."
+        )
+        restore_note.setObjectName("mutedText")
+        restore_note.setWordWrap(True)
+        restore_layout.addWidget(restore_note)
+
+        restore_row = QHBoxLayout()
+        scoring_btn = QPushButton("Restore default scoring values")
+        scoring_btn.setObjectName("rerun")
+        scoring_btn.clicked.connect(lambda: self._restore_defaults("scoring"))
+        restore_row.addWidget(scoring_btn)
+        detection_btn = QPushButton("Restore default detection rules")
+        detection_btn.setObjectName("rerun")
+        detection_btn.clicked.connect(lambda: self._restore_defaults("detection"))
+        restore_row.addWidget(detection_btn)
+        restore_row.addStretch()
+        restore_layout.addLayout(restore_row)
+        layout.addWidget(restore_card)
 
         # Appearance card
         appear_card = self._card()
@@ -263,12 +356,45 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _save(self) -> None:
-        if not os.path.exists(self._config_path):
-            QMessageBox.warning(self, "Config not found", f"Cannot find {self._config_path}.")
+        try:
+            cfg = config_io.load_config(self._config_path)
+        except config_io.ConfigError as exc:
+            QMessageBox.warning(self, "Settings", str(exc))
             return
 
-        with open(self._config_path) as f:
-            cfg = yaml.safe_load(f) or {}
+        errors: list[str] = []
+
+        # --- list fields: sanitise (control chars, length, duplicates, count) ---
+        def _parse_list(field: QPlainTextEdit) -> list[str]:
+            raw = field.toPlainText().replace("\n", ",")
+            return [item for item in raw.split(",")]
+
+        lists = {}
+        for key, field, label in (
+            ("high_impact_users", self._high_users_input, "High-impact users"),
+            ("high_impact_resources", self._high_resources_input, "High-impact resources"),
+            ("med_impact_resources", self._med_resources_input, "Medium-impact resources"),
+        ):
+            entries, errs = config_io.sanitise_entries(_parse_list(field), label)
+            lists[key] = entries
+            errors += errs
+
+        # --- severity tiers: contiguous, non-overlapping, covering 1-25 ---
+        tiers = {
+            name: {"min": boxes["min"].value(), "max": boxes["max"].value()}
+            for name, boxes in self._tier_inputs.items()
+        }
+        errors += config_io.validate_tiers(tiers)
+
+        # --- numeric score values (range enforced here, not just in the widget) ---
+        scores = {key: box.value() for key, box in self._score_inputs.items()}
+        for key, value in scores.items():
+            errors += config_io.validate_score(value, key)
+
+        if errors:
+            # Nothing is written when validation fails.
+            self._show_errors(errors)
+            return
 
         cfg["auth_log_path"] = self._auth_input.text()
         cfg["web_log_path"]  = self._web_input.text()
@@ -289,45 +415,93 @@ class SettingsPanel(QWidget):
             i for i, cb in enumerate(self._day_checks) if cb.isChecked()
         ]
 
-        # Risk scoring rules (R11-C) — parse comma- or newline-separated lists
-        def _parse_list(field: QPlainTextEdit) -> list[str]:
-            raw = field.toPlainText().replace("\n", ",")
-            return [item.strip() for item in raw.split(",") if item.strip()]
-
         cfg.setdefault("scoring", {})
         cfg["scoring"].setdefault("rules", {})
-        cfg["scoring"]["rules"]["high_impact_users"]     = _parse_list(self._high_users_input)
-        cfg["scoring"]["rules"]["high_impact_resources"] = _parse_list(self._high_resources_input)
-        cfg["scoring"]["rules"]["med_impact_resources"]  = _parse_list(self._med_resources_input)
+        cfg["scoring"]["rules"].update(lists)
+        cfg["scoring"]["rules"].update(scores)
+        cfg["scoring"]["severity_tiers"] = tiers
 
         # Theme preference is NOT written here: it is a UI setting persisted
         # to QSettings by theme.apply_theme(). config.yaml holds detection rules.
         new_theme_name = self._theme_combo.currentText().lower()
 
-        with open(self._config_path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+        # server.api_key and every other untouched key round-trip unchanged.
+        try:
+            config_io.write_config_atomic(cfg, self._config_path)
+        except config_io.ConfigError as exc:
+            QMessageBox.warning(self, "Settings", str(exc))
+            return
 
-        # Apply new theme immediately (signal connects to MainWindow.apply_theme)
         _theme.set_active(new_theme_name)
         self.theme_changed.emit(new_theme_name)
 
         QMessageBox.information(
             self, "Saved",
-            "Settings saved. Detection threshold changes take effect on the next pipeline run."
+            "Settings saved.\n\nScoring and detection changes are read when the "
+            "pipeline runs, so restart CyberMon for them to take effect."
+        )
+
+    def _show_errors(self, errors: list) -> None:
+        """Surface validation problems without writing anything."""
+        shown = "\n".join(f"• {e}" for e in errors[:10])
+        if len(errors) > 10:
+            shown += f"\n• ...and {len(errors) - 10} more."
+        QMessageBox.warning(
+            self, "Settings not saved",
+            "Please correct the following before saving:\n\n" + shown,
+        )
+
+    def _restore_defaults(self, section: str) -> None:
+        """Reset ONLY the named section from config_default.yaml.
+
+        Log paths, setup_complete, mode, theme, server (incl. api_key), agent
+        and storage are never touched.
+        """
+        labels = {
+            "scoring": ("Restore default scoring values",
+                        "This resets risk scoring values and severity tier "
+                        "boundaries to their defaults.\n\nYour log file paths, "
+                        "setup status, mode, theme and server settings are NOT "
+                        "changed."),
+            "detection": ("Restore default detection rules",
+                          "This resets brute-force thresholds, restricted "
+                          "resources and business hours to their defaults."
+                          "\n\nYour log file paths, setup status, mode, theme "
+                          "and server settings are NOT changed."),
+        }
+        title, body = labels[section]
+        if QMessageBox.question(
+            self, title, body + "\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        defaults_path = os.path.join(
+            os.path.dirname(self._config_path) or ".", "config_default.yaml"
+        )
+        try:
+            cfg = config_io.load_config(self._config_path)
+            defaults = config_io.load_config(defaults_path)
+            updated = config_io.restore_section(cfg, defaults, section)
+            config_io.write_config_atomic(updated, self._config_path)
+        except config_io.ConfigError as exc:
+            QMessageBox.warning(self, "Settings", str(exc))
+            return
+
+        QMessageBox.information(
+            self, title,
+            "Defaults restored.\n\nRestart CyberMon for the changes to take effect."
         )
 
     def _reset_wizard(self) -> None:
-        if not os.path.exists(self._config_path):
-            QMessageBox.warning(self, "Config not found", f"Cannot find {self._config_path}.")
+        try:
+            cfg = config_io.load_config(self._config_path)
+            cfg["setup_complete"] = False
+            config_io.write_config_atomic(cfg, self._config_path)
+        except config_io.ConfigError as exc:
+            QMessageBox.warning(self, "Settings", str(exc))
             return
-
-        with open(self._config_path) as f:
-            cfg = yaml.safe_load(f) or {}
-
-        cfg["setup_complete"] = False
-
-        with open(self._config_path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
         QMessageBox.information(
             self,
