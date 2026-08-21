@@ -73,6 +73,7 @@ scoring:
     unauthorized_access_default_likelihood: 3
     off_hours_default_likelihood: 2
     off_hours_default_impact: 3
+    off_hours_high_user_impact: 5
     failed_login_high_user_impact: 4
     failed_login_default_impact: 2
     unauthorized_access_high_resource_impact: 5

@@ -87,6 +87,14 @@ def get_impact(violation: dict, config: dict) -> int:
         return rules.get("unauthorized_access_default_impact", 2)
 
     if vtype == "off_hours_login":
-        return rules.get("off_hours_default_impact", 3)
+        # Privilege-aware impact: an out-of-hours login on a privileged account
+        # is more consequential than one on a standard account. Reuses the same
+        # high_impact_users list as failed_logins — no separate lookup.
+        default_impact = rules.get("off_hours_default_impact", 3)
+        high_users = set(rules.get("high_impact_users", _FALLBACK_HIGH_USERS))
+        if violation.get("username") in high_users:
+            # Missing key falls back to the flat default (older config files).
+            return rules.get("off_hours_high_user_impact", default_impact)
+        return default_impact
 
     return 1
