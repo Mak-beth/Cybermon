@@ -3,6 +3,7 @@
 Outer shell: optional warning banner + sidebar navigation + QStackedWidget
 content area.  Manages theme application across all panels.
 """
+import logging
 import os
 
 from PyQt6.QtCore import Qt
@@ -22,6 +23,8 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui import theme as _theme
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Palette constants — sidebar stays dark in both themes
@@ -235,8 +238,27 @@ class MainWindow(QMainWindow):
 
         # Wire theme-change signal from settings panel
         self._panels[4].theme_changed.connect(self.apply_theme)
+        # Re-scored scores are already in the DB; pull them into the views.
+        self._panels[4].rescored.connect(self.refresh_data_panels)
 
         return self._stack
+
+    def refresh_data_panels(self) -> None:
+        """Reload Overview, Violations and Trend from the database.
+
+        Called after a re-score so updated scores appear without waiting for
+        the panels' own poll timers. Live Feed is intentionally left alone: it
+        is a watermark-based stream of NEW violations, and a re-score creates
+        none — it only rewrites the scores of existing ones.
+        """
+        for index in (0, 1, 3):          # Overview, Violations, Trend
+            panel = self._panels[index]
+            try:
+                panel.refresh()
+            except Exception:
+                logger.exception(
+                    "main_window: could not refresh panel %d after re-score", index
+                )
 
     # ------------------------------------------------------------------
     # Theme application

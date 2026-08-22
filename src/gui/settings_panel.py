@@ -6,11 +6,13 @@ Emits theme_changed(str) when the user saves a new theme preference.
 """
 from __future__ import annotations
 
+import logging
 import os
 
 import yaml
 from PyQt6.QtCore import QTime, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -30,6 +32,9 @@ from PyQt6.QtWidgets import (
 
 from src.gui import config_io
 from src.gui import theme as _theme
+from src.storage.rescore import rescore_violations
+
+logger = logging.getLogger(__name__)
 
 def _section(text: str, palette: dict) -> QLabel:
     lbl = QLabel(text)
@@ -50,11 +55,14 @@ class SettingsPanel(QWidget):
     # PyQt6 signals are class-level descriptors; declaring them inside a method
     # creates a plain attribute that silently fails to connect.
     theme_changed = pyqtSignal(str)
+    # Emitted after a successful re-score so MainWindow can refresh data panels.
+    rescored = pyqtSignal()
 
     def __init__(self, config: dict, config_path: str = "config/config.yaml", parent=None):
         super().__init__(parent)
         self._config_path = config_path
         self._palette = _theme.get_active()
+        self._rescoring = False
         self.setObjectName("settings_root")
 
         outer = QVBoxLayout(self)
@@ -83,13 +91,22 @@ class SettingsPanel(QWidget):
         outer.addWidget(scroll)
 
         btn_row = QHBoxLayout()
-        save_btn = QPushButton("Save changes")
-        save_btn.setObjectName("save")
-        save_btn.clicked.connect(self._save)
+        self._save_btn = QPushButton("Save changes")
+        self._save_btn.setObjectName("save")
+        self._save_btn.clicked.connect(self._save)
+        # "&&" escapes the ampersand so Qt does not read it as a mnemonic.
+        self._rescore_btn = QPushButton("Save && Re-score")
+        self._rescore_btn.setObjectName("save")
+        self._rescore_btn.setToolTip(
+            "Save, then recalculate scores for violations already detected. "
+            "Detection changes still need a restart."
+        )
+        self._rescore_btn.clicked.connect(self._save_and_rescore)
         rerun_btn = QPushButton("Re-run Setup Wizard")
         rerun_btn.setObjectName("rerun")
         rerun_btn.clicked.connect(self._reset_wizard)
-        btn_row.addWidget(save_btn)
+        btn_row.addWidget(self._save_btn)
+        btn_row.addWidget(self._rescore_btn)
         btn_row.addWidget(rerun_btn)
         btn_row.addStretch()
         outer.addLayout(btn_row)
@@ -356,11 +373,31 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _save(self) -> None:
+        """Save only. Scoring/detection changes apply on the next launch."""
+        result = self._perform_save()
+        if result is None:
+            return
+        QMessageBox.information(
+            self, "Saved",
+            "Settings saved.\n\nScoring and detection changes are read when the "
+            "pipeline runs, so restart CyberMon for them to take effect."
+        )
+
+    def _perform_save(self):
+        """Validate, then write config atomically.
+
+        Returns (before_cfg, after_cfg) on success, or None if validation or
+        the write failed (in which case the user has already been told and
+        nothing was written).
+        """
         try:
             cfg = config_io.load_config(self._config_path)
         except config_io.ConfigError as exc:
             QMessageBox.warning(self, "Settings", str(exc))
-            return
+            return None
+
+        import copy
+        before = copy.deepcopy(cfg)
 
         errors: list[str] = []
 
@@ -394,7 +431,7 @@ class SettingsPanel(QWidget):
         if errors:
             # Nothing is written when validation fails.
             self._show_errors(errors)
-            return
+            return None
 
         cfg["auth_log_path"] = self._auth_input.text()
         cfg["web_log_path"]  = self._web_input.text()
@@ -430,16 +467,81 @@ class SettingsPanel(QWidget):
             config_io.write_config_atomic(cfg, self._config_path)
         except config_io.ConfigError as exc:
             QMessageBox.warning(self, "Settings", str(exc))
-            return
+            return None
 
         _theme.set_active(new_theme_name)
         self.theme_changed.emit(new_theme_name)
+        return before, cfg
 
-        QMessageBox.information(
-            self, "Saved",
-            "Settings saved.\n\nScoring and detection changes are read when the "
-            "pipeline runs, so restart CyberMon for them to take effect."
-        )
+    # Detection settings that a scores-only re-score cannot apply: they change
+    # WHICH violations exist, which only a full pipeline run at startup can do.
+    _DETECTION_KEYS = ("auth_log_path", "web_log_path", "detection")
+
+    def _detection_changed(self, before: dict, after: dict) -> bool:
+        return any(before.get(k) != after.get(k) for k in self._DETECTION_KEYS)
+
+    def _save_and_rescore(self) -> None:
+        """Save, then recompute scores for violations already in the database.
+
+        Only risk_scores values are rewritten — events and violations rows are
+        left exactly as they are. Detection changes still need a restart.
+        """
+        if self._rescoring:
+            return                      # re-entrancy guard
+        self._rescoring = True
+        self._set_busy(True)
+        try:
+            result = self._perform_save()
+            if result is None:
+                return                  # validation/write failed; nothing re-scored
+            before, after = result
+
+            # Re-read from disk rather than trusting the in-memory dict.
+            try:
+                saved = config_io.load_config(self._config_path)
+            except config_io.ConfigError as exc:
+                QMessageBox.warning(self, "Settings", str(exc))
+                return
+
+            db_path = saved.get("storage", {}).get("db_path", "data/cybermon.db")
+            try:
+                summary = rescore_violations(db_path, saved)
+            except Exception:
+                # Full detail to the log; short, path-free message to the user.
+                logger.exception("settings: re-score failed")
+                QMessageBox.warning(
+                    self, "Re-score failed",
+                    "Settings were saved, but scores could not be recalculated.\n\n"
+                    "Existing scores are unchanged. Restart CyberMon to rebuild "
+                    "them from your log files."
+                )
+                return
+
+            self.rescored.emit()        # MainWindow refreshes the data panels
+
+            message = (
+                f"Settings saved and {summary['total']} violation(s) re-scored "
+                f"({summary['changed']} changed).\n\nNo restart needed for "
+                f"scoring changes."
+            )
+            if self._detection_changed(before, after):
+                message += (
+                    "\n\nNote: you also changed detection settings (log paths, "
+                    "thresholds, business hours or restricted resources). Those "
+                    "decide which violations are found, so they only take effect "
+                    "after restarting CyberMon."
+                )
+            QMessageBox.information(self, "Saved & re-scored", message)
+        finally:
+            self._rescoring = False
+            self._set_busy(False)
+
+    def _set_busy(self, busy: bool) -> None:
+        """Disable the action buttons while a re-score runs."""
+        for btn in (self._save_btn, self._rescore_btn):
+            btn.setEnabled(not busy)
+        self._rescore_btn.setText("Re-scoring..." if busy else "Save && Re-score")
+        QApplication.processEvents()    # let the disabled state paint
 
     def _show_errors(self, errors: list) -> None:
         """Surface validation problems without writing anything."""
