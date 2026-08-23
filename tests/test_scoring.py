@@ -243,3 +243,87 @@ def test_full_pipeline_scoring(config):
     assert len(scored) == len(violations)
     assert all(v["risk_score"] == v["likelihood"] * v["impact"] for v in scored)
     assert all(v["severity"] in ("Low", "Medium", "High", "Critical") for v in scored)
+
+
+# --- R12-A: scoring must use the same restricted matcher as detection ---
+# Detection matched restricted resources by prefix while scoring matched by
+# exact membership, so /admin scored High (15) but /admin/login.php scored
+# Medium (6) — the same violation, two tiers apart.
+
+def _unauth(resource):
+    return {
+        "violation_type": "unauthorized_access",
+        "username": None,
+        "resource": resource,
+        "detail": f"HTTP 403 on restricted resource '{resource}'",
+    }
+
+
+def test_scoring_restricted_subpath_gets_restricted_impact(config):
+    """/admin/login.php must score identically to /admin."""
+    base = score_violation(_unauth("/admin"), config)
+    sub = score_violation(_unauth("/admin/login.php"), config)
+    assert sub["impact"] == base["impact"]
+    assert sub["risk_score"] == base["risk_score"]
+    assert sub["severity"] == base["severity"]
+
+
+def test_scoring_restricted_with_query_string_gets_restricted_impact(config):
+    """/admin?page=1 must score identically to /admin."""
+    base = score_violation(_unauth("/admin"), config)
+    query = score_violation(_unauth("/admin?page=1"), config)
+    assert query["impact"] == base["impact"]
+    assert query["risk_score"] == base["risk_score"]
+    assert query["severity"] == base["severity"]
+
+
+def test_scoring_exact_restricted_still_correct(config):
+    """Regression guard: /admin is unchanged from previous behaviour."""
+    scored = score_violation(_unauth("/admin"), config)
+    assert scored["impact"] == 5
+    assert scored["risk_score"] == 15
+    assert scored["severity"] == "High"
+
+
+def test_scoring_prefix_collision_not_treated_as_restricted(config):
+    """/administrator shares a prefix with /admin but is a different path."""
+    scored = score_violation(_unauth("/administrator"), config)
+    assert scored["impact"] == 2
+    assert scored["severity"] != "High"
+
+
+def test_detection_and_scoring_agree_on_restricted_paths(config):
+    """The two layers must return the same verdict for every path.
+
+    This is the test that would have caught the original defect.
+    """
+    from datetime import datetime
+    from src.detection.rules.unauthorized_access import detect_unauthorized_access
+
+    restricted = set(config["detection"]["unauthorized_access"]["restricted_resources"])
+    high = set(config["scoring"]["rules"]["high_impact_resources"])
+    med = set(config["scoring"]["rules"]["med_impact_resources"])
+    default_impact = config["scoring"]["rules"]["unauthorized_access_default_impact"]
+
+    verdicts = []
+    for resource in ["/admin", "/admin/", "/admin/login.php", "/admin?page=1",
+                     "/administrator"]:
+        event = {
+            "timestamp": datetime(2026, 5, 27, 10, 0, 0),
+            "username": None,
+            "source_ip": "10.0.0.99",
+            "resource": resource,
+            "action": "http_request",
+            "status_code": "403",
+        }
+        detected = len(detect_unauthorized_access([event], config)) > 0
+        scored_as_restricted = (
+            score_violation(_unauth(resource), config)["impact"] != default_impact
+        )
+        assert detected == scored_as_restricted, (
+            f"{resource}: detection={detected} but scoring={scored_as_restricted}"
+        )
+        verdicts.append(detected)
+
+    # The cases must cover both outcomes, or agreement proves nothing.
+    assert True in verdicts and False in verdicts

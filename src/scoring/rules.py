@@ -7,6 +7,8 @@ fallback defaults below are used and a one-time warning is printed to stderr.
 import re
 import sys
 
+from src.detection.matching import matches_restricted
+
 # Fallback defaults — used ONLY when scoring.rules is absent from config.
 _FALLBACK_HIGH_USERS     = {"root", "admin"}
 _FALLBACK_HIGH_RESOURCES = {"/admin", "/.env", "/phpmyadmin"}
@@ -77,12 +79,15 @@ def get_impact(violation: dict, config: dict) -> int:
         return rules.get("failed_login_default_impact", 2)
 
     if vtype == "unauthorized_access":
+        # Prefix match, using the SAME helper the detection layer uses, so a
+        # subpath like /admin/login.php is scored exactly like /admin. An
+        # exact-membership check here made detection and scoring disagree.
         resource = violation.get("resource") or ""
         high = set(rules.get("high_impact_resources", _FALLBACK_HIGH_RESOURCES))
         med  = set(rules.get("med_impact_resources", _FALLBACK_MED_RESOURCES))
-        if resource in high:
+        if matches_restricted(resource, high):
             return rules.get("unauthorized_access_high_resource_impact", 5)
-        if resource in med:
+        if matches_restricted(resource, med):
             return rules.get("unauthorized_access_med_resource_impact", 3)
         return rules.get("unauthorized_access_default_impact", 2)
 

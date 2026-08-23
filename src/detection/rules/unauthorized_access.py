@@ -1,17 +1,9 @@
-def _matches_restricted(resource: str, restricted: set) -> bool:
-    """Return True if resource starts with any restricted prefix.
+from src.detection.matching import matches_restricted
 
-    Prefix match (not substring): /admin matches /admin, /admin/, and
-    /admin/login.php, but /administrator does not.  Query strings are
-    stripped before matching so /admin?page=1 is caught too.
-    """
-    path = resource.split("?")[0]
-    path = path.rstrip("/") or "/"
-    for prefix in restricted:
-        clean_prefix = prefix.rstrip("/")
-        if path == clean_prefix or path.startswith(clean_prefix + "/"):
-            return True
-    return False
+# Kept so existing references to the old private name keep working; the single
+# implementation now lives in src/detection/matching.py and is shared with the
+# scoring layer.
+_matches_restricted = matches_restricted
 
 
 def detect_unauthorized_access(events: list[dict], config: dict) -> list[dict]:
