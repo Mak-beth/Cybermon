@@ -81,5 +81,6 @@ scoring:
     unauthorized_access_default_impact: 2
 storage:
   db_path: data/cybermon.db
+  clear_on_start: true   # rebuild the database from log files on every launch
 auth_log_path: logs/live/auth.log
 web_log_path: logs/live/access.log

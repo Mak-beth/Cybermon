@@ -75,7 +75,13 @@ def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
     db_path = config["storage"]["db_path"]
 
     init_db(db_path)
-    _clear_tables(db_path)
+    # Demo-rebuild design: each run reflects the log files as they are now, so
+    # the tables are emptied and rebuilt on launch. Set storage.clear_on_start
+    # to false in config.yaml to accumulate findings across sessions instead.
+    # The schema and the database file persist either way.
+    # A missing key means true, so an older config keeps the previous behaviour.
+    if config.get("storage", {}).get("clear_on_start", True):
+        _clear_tables(db_path)
 
     print("[ 1/5 ] Ingesting logs...")
     events = (preprocess_log_file(auth_log, "auth") +
