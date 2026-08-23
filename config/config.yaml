@@ -34,7 +34,7 @@ detection:
     - 2
     - 3
     - 4
-    business_hours_start: 08:00
+    business_hours_start: 09:00
     business_hours_end: '18:00'
 scoring:
   severity_tiers:
@@ -54,6 +54,7 @@ scoring:
     high_impact_users:
     - root
     - admin
+    - siteadmin
     high_impact_resources:
     - /admin
     - /.env
@@ -82,5 +83,5 @@ scoring:
 storage:
   db_path: data/cybermon.db
   clear_on_start: true   # rebuild the database from log files on every launch
-auth_log_path: logs/live/auth.log
-web_log_path: logs/live/access.log
+auth_log_path: C:/Users/M/Desktop/Cybermon/logs/test/test_auth.log
+web_log_path: C:/Users/M/Desktop/Cybermon/logs/test/test_web.log
