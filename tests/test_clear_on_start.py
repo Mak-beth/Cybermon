@@ -1,6 +1,7 @@
 """R12-B: the startup table wipe is an explicit config flag.
 
-run_pipeline() empties events/violations/risk_scores on every launch so each run
+Startup (_prepare_database, called from main() whether or not run_pipeline()
+runs) empties events/violations/risk_scores on every launch so each run
 reflects the current log files (demo-rebuild design). That behaviour is
 unchanged by default; storage.clear_on_start makes it explicit and switchable,
 which is what NFR-05 ("retrieve findings persistently across sessions") needs.
@@ -11,7 +12,7 @@ import sqlite3
 import pytest
 import yaml
 
-from main import run_pipeline
+from main import _prepare_database, run_pipeline
 from src.storage.db import init_db
 
 AUTH_LOG = "logs/samples/auth.log"
@@ -67,7 +68,7 @@ def test_clear_on_start_true_wipes_tables(seeded):
     cfg["storage"]["clear_on_start"] = True
     assert _seeded_rows(db_path) == 1
 
-    run_pipeline(AUTH_LOG, WEB_LOG, cfg)
+    _prepare_database(cfg)
 
     assert _seeded_rows(db_path) == 0
 
@@ -77,7 +78,7 @@ def test_clear_on_start_false_preserves_existing_rows(seeded):
     cfg, db_path = seeded
     cfg["storage"]["clear_on_start"] = False
 
-    run_pipeline(AUTH_LOG, WEB_LOG, cfg)
+    _prepare_database(cfg)
 
     assert _seeded_rows(db_path) == 1
 
@@ -88,9 +89,19 @@ def test_clear_on_start_missing_key_defaults_to_true(seeded):
     cfg["storage"].pop("clear_on_start", None)
     assert "clear_on_start" not in cfg["storage"]
 
-    run_pipeline(AUTH_LOG, WEB_LOG, cfg)
+    _prepare_database(cfg)
 
     assert _seeded_rows(db_path) == 0
+
+
+def test_run_pipeline_itself_no_longer_wipes(seeded):
+    """The wipe moved to startup: run_pipeline() alone keeps existing rows."""
+    cfg, db_path = seeded
+    cfg["storage"]["clear_on_start"] = True
+
+    run_pipeline(AUTH_LOG, WEB_LOG, cfg)
+
+    assert _seeded_rows(db_path) == 1
 
 
 def test_clear_on_start_present_in_both_config_files():

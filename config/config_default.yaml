@@ -78,5 +78,7 @@ scoring:
 storage:
   db_path: data/cybermon.db
   clear_on_start: true   # rebuild the database from log files on every launch
+pipeline:
+  run_on_launch: true    # read the log files in full at startup; false = live tail only
 auth_log_path: logs/auth.log
 web_log_path: logs/access.log

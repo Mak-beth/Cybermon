@@ -82,9 +82,19 @@ class _SidebarButton(QPushButton):
 # ---------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    def __init__(self, config: dict, parent=None):
+    def __init__(self, config: dict, parent=None, config_path: str | None = None,
+                 monitor=None):
         super().__init__(parent)
         self._config = config
+        # The config file main() actually loaded. Handed to Settings explicitly so
+        # a relative default can never make Settings edit a different file.
+        self._config_path = config_path
+        # LiveMonitor for the running app; None when a tool or test builds the
+        # window without live monitoring.
+        self._monitor = monitor
+        # What the shared banner is currently reporting ("missing" or "error"),
+        # so a successful restart only clears a missing-file warning.
+        self._banner_kind: str | None = None
 
         # Theme is a UI preference: read it from QSettings, not config.yaml
         # (which holds detection rules). Applied before the UI is built.
@@ -226,12 +236,15 @@ class MainWindow(QMainWindow):
         from src.gui.trend_panel      import TrendPanel
         from src.gui.settings_panel   import SettingsPanel
 
+        # Only override Settings' default when main() supplied the real path.
+        settings_kwargs = {"config_path": self._config_path} if self._config_path else {}
+
         self._panels = [
             OverviewPanel(self._config,   parent=self),    # 0
             ViolationsTable(self._config, parent=self),    # 1
             LiveFeedPanel(self._config,   parent=self),    # 2
             TrendPanel(self._config,      parent=self),    # 3
-            SettingsPanel(self._config,   parent=self),    # 4
+            SettingsPanel(self._config,   parent=self, **settings_kwargs),    # 4
         ]
         for panel in self._panels:
             self._stack.addWidget(panel)
@@ -240,6 +253,8 @@ class MainWindow(QMainWindow):
         self._panels[4].theme_changed.connect(self.apply_theme)
         # Re-scored scores are already in the DB; pull them into the views.
         self._panels[4].rescored.connect(self.refresh_data_panels)
+        # A save that changed a log path restarts live monitoring on the new files.
+        self._panels[4].log_paths_changed.connect(self._on_log_paths_changed)
 
         return self._stack
 
@@ -259,6 +274,48 @@ class MainWindow(QMainWindow):
                 logger.exception(
                     "main_window: could not refresh panel %d after re-score", index
                 )
+
+    # ------------------------------------------------------------------
+    # Live monitoring
+    # ------------------------------------------------------------------
+
+    def _on_log_paths_changed(self, auth_log: str, web_log: str) -> None:
+        """Settings saved new log paths: restart live monitoring on them.
+
+        Forward-only: lines already in the new files are not analysed, and
+        run_pipeline()/_prepare_database() are never re-run here. If either path
+        is missing, monitoring stays on the previous files and the missing-file
+        banner says so, rather than tailing a path that isn't there.
+        """
+        if self._monitor is None:
+            return
+        try:
+            missing = self._monitor.restart(auth_log, web_log)
+        except Exception:
+            # Never let this escape a Qt slot: PyQt6's default handling of an
+            # unhandled slot exception terminates the application.
+            logger.exception("main_window: could not restart live monitoring")
+            self.show_error_banner("Could not switch live monitoring to the new log files.")
+            return
+        if missing:
+            self._show_missing_banner(missing, still_watching_previous=True)
+        elif self._banner_kind == "missing":
+            self._warning_banner.setVisible(False)
+            self._banner_kind = None
+
+    def closeEvent(self, event) -> None:
+        """Stop live monitoring before the window closes.
+
+        The tail threads are daemons and would die with the process anyway;
+        stopping them here lets a line already being handled finish its
+        database write instead of being dropped at exit.
+        """
+        if self._monitor is not None:
+            try:
+                self._monitor.stop()
+            except Exception:
+                logger.exception("main_window: could not stop live monitoring on close")
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------
     # Theme application
@@ -284,14 +341,22 @@ class MainWindow(QMainWindow):
             if path and not os.path.exists(path):
                 missing.append(path)
         if missing:
-            self._banner_text.setText(
-                "Log file not found at " + ", ".join(missing) + "."
-            )
-            self._warning_banner.setVisible(True)
+            self._show_missing_banner(missing)
+
+    def _show_missing_banner(self, missing: list[str],
+                             still_watching_previous: bool = False) -> None:
+        shown = [path if path else "(no path set)" for path in missing]
+        text = "Log file not found at " + ", ".join(shown) + "."
+        if still_watching_previous:
+            text += " Live monitoring is still watching the previous files."
+        self._banner_text.setText(text)
+        self._warning_banner.setVisible(True)
+        self._banner_kind = "missing"
 
     def show_error_banner(self, msg: str) -> None:
         self._banner_text.setText(f"Error: {msg}  See cybermon.log for details.")
         self._warning_banner.setVisible(True)
+        self._banner_kind = "error"
 
     # ------------------------------------------------------------------
     # Navigation

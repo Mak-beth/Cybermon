@@ -57,6 +57,9 @@ class SettingsPanel(QWidget):
     theme_changed = pyqtSignal(str)
     # Emitted after a successful re-score so MainWindow can refresh data panels.
     rescored = pyqtSignal()
+    # Emitted after a save that changed a log path, with the new (auth, web)
+    # paths. MainWindow restarts live monitoring; Settings knows nothing of it.
+    log_paths_changed = pyqtSignal(str, str)
 
     def __init__(self, config: dict, config_path: str = "config/config.yaml", parent=None):
         super().__init__(parent)
@@ -373,15 +376,19 @@ class SettingsPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _save(self) -> None:
-        """Save only. Scoring/detection changes apply on the next launch."""
+        """Save only. Scoring/detection changes apply on the next launch; a log
+        path change is applied to live monitoring straight away."""
         result = self._perform_save()
         if result is None:
             return
-        QMessageBox.information(
-            self, "Saved",
+        before, after = result
+        message = (
             "Settings saved.\n\nScoring and detection changes are read when the "
             "pipeline runs, so restart CyberMon for them to take effect."
         )
+        if self._paths_changed(before, after):
+            message += self._PATHS_CHANGED_NOTE
+        QMessageBox.information(self, "Saved", message)
 
     def _perform_save(self):
         """Validate, then write config atomically.
@@ -471,14 +478,29 @@ class SettingsPanel(QWidget):
 
         _theme.set_active(new_theme_name)
         self.theme_changed.emit(new_theme_name)
+        if self._paths_changed(before, cfg):
+            self.log_paths_changed.emit(cfg["auth_log_path"], cfg["web_log_path"])
         return before, cfg
 
     # Detection settings that a scores-only re-score cannot apply: they change
     # WHICH violations exist, which only a full pipeline run at startup can do.
-    _DETECTION_KEYS = ("auth_log_path", "web_log_path", "detection")
+    # Log paths are not here: a path change is applied live (log_paths_changed).
+    _DETECTION_KEYS = ("detection",)
+
+    _LOG_PATH_KEYS = ("auth_log_path", "web_log_path")
+
+    _PATHS_CHANGED_NOTE = (
+        "\n\nLog file paths changed: live monitoring now follows the new files "
+        "for lines written from here on. Lines already in those files are not "
+        "re-analysed. If a file can't be found, a warning banner appears and "
+        "monitoring stays on the previous files."
+    )
 
     def _detection_changed(self, before: dict, after: dict) -> bool:
         return any(before.get(k) != after.get(k) for k in self._DETECTION_KEYS)
+
+    def _paths_changed(self, before: dict, after: dict) -> bool:
+        return any(before.get(k) != after.get(k) for k in self._LOG_PATH_KEYS)
 
     def _save_and_rescore(self) -> None:
         """Save, then recompute scores for violations already in the database.
@@ -526,11 +548,13 @@ class SettingsPanel(QWidget):
             )
             if self._detection_changed(before, after):
                 message += (
-                    "\n\nNote: you also changed detection settings (log paths, "
-                    "thresholds, business hours or restricted resources). Those "
-                    "decide which violations are found, so they only take effect "
-                    "after restarting CyberMon."
+                    "\n\nNote: you also changed detection settings (thresholds, "
+                    "business hours or restricted resources). Those decide which "
+                    "violations are found, so they only take effect after "
+                    "restarting CyberMon."
                 )
+            if self._paths_changed(before, after):
+                message += self._PATHS_CHANGED_NOTE
             QMessageBox.information(self, "Saved & re-scored", message)
         finally:
             self._rescoring = False

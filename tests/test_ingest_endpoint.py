@@ -249,11 +249,15 @@ def test_pipeline_web_line_end_to_end(tmp_path, config):
 # ---------------------------------------------------------------------------
 
 def test_slow_brute_force_detected_across_batches(tmp_path, config):
-    """One failed login per batch — batch-only detection misses this entirely.
+    """One failed login per batch; batch-only detection misses this entirely.
 
-    With DB-window detection (threshold=2), the second batch must produce a
-    violation because the first batch's event is still inside the window.
+    DB-window detection flags a (user, host) pair once its failures inside the
+    window reach the configured threshold. With exactly `threshold` single-line
+    batches, only the last batch should produce a violation: each earlier
+    batch's event is still inside the window and counts toward it.
     """
+    threshold = config["detection"]["failed_logins"]["threshold"]
+    assert threshold >= 2, "needs at least two batches to exercise cross-batch state"
     db_path = str(tmp_path / "slow_brute.db")
     patched = {**config, "storage": {"db_path": db_path}}
 
@@ -264,11 +268,14 @@ def test_slow_brute_force_detected_across_batches(tmp_path, config):
     ingest_app.config["TESTING"] = True
     with patch("server.ingest_endpoint._load_config", return_value=patched):
         with ingest_app.test_client() as c:
-            first = c.post("/ingest", headers=_AUTH,
-                           json={"host": "slow-agent", "lines": [_line()]})
-            second = c.post("/ingest", headers=_AUTH,
-                            json={"host": "slow-agent", "lines": [_line()]})
+            responses = [
+                c.post("/ingest", headers=_AUTH,
+                       json={"host": "slow-agent", "lines": [_line()]})
+                for _ in range(threshold)
+            ]
 
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert second.get_json()["violations_detected"] >= 1
+    assert all(r.status_code == 200 for r in responses)
+    # No batch before the threshold is reached raises anything on its own...
+    assert all(r.get_json()["violations_detected"] == 0 for r in responses[:-1])
+    # ...and the batch that brings the windowed count to the threshold does.
+    assert responses[-1].get_json()["violations_detected"] >= 1

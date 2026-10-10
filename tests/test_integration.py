@@ -6,13 +6,16 @@ import yaml
 
 @pytest.fixture
 def config():
-    with open("config/config.yaml") as f:
+    # The shipped defaults, so expected counts do not depend on local tuning
+    # of config/config.yaml.
+    with open("config/config_default.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 @pytest.fixture
 def pipeline_result(config):
-    from main import run_pipeline
+    from main import _prepare_database, run_pipeline
+    _prepare_database(config)   # the startup wipe lives outside run_pipeline()
     result = run_pipeline(
         "logs/samples/auth.log",
         "logs/samples/access.log",
@@ -28,6 +31,8 @@ def test_pipeline_events_parsed(pipeline_result):
 
 
 def test_pipeline_violations_detected(pipeline_result):
+    # Expected under the shipped defaults: threshold 2 within 10 min,
+    # business hours 08:00-18:00 Mon-Fri.
     assert len(pipeline_result["scored"]) == 13
 
 
@@ -53,15 +58,17 @@ def test_pipeline_risk_score_equals_product(pipeline_result):
                for v in pipeline_result["scored"])
 
 
-# --- idempotency: running twice produces the same count, not double ---
+# --- idempotency: launching twice produces the same count, not double ---
 
 def test_pipeline_idempotent(config):
-    from main import run_pipeline
+    from main import _prepare_database, run_pipeline
     from src.storage.reader import get_summary_counts
 
+    _prepare_database(config)
     run_pipeline("logs/samples/auth.log", "logs/samples/access.log", config)
     count_after_first = get_summary_counts(config["storage"]["db_path"])["total"]
 
+    _prepare_database(config)
     run_pipeline("logs/samples/auth.log", "logs/samples/access.log", config)
     count_after_second = get_summary_counts(config["storage"]["db_path"])["total"]
 

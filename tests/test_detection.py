@@ -13,7 +13,9 @@ VIOLATION_KEYS = {"violation_type", "timestamp", "username", "source_ip", "resou
 
 @pytest.fixture
 def config():
-    with open("config/config.yaml") as f:
+    # The shipped defaults, so expected counts do not depend on local tuning
+    # of config/config.yaml.
+    with open("config/config_default.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 

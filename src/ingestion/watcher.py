@@ -87,7 +87,12 @@ class LogWatcher:
         triggering_event_id points at already exists. Persistence is injected:
         this module never imports the storage layer.
         """
-        self._stop.clear()
+        # A fresh stop Event per run. Threads from a previous run keep the Event
+        # they were given, which stop() has already set, so starting again can
+        # never revive them (clearing one shared Event did exactly that).
+        # Setting the old Event first also ends a previous run never stopped.
+        self._stop.set()
+        self._stop = threading.Event()
         self._threads = []
         cb = self._make_callback(on_violation, on_event)
         for filepath, log_type in ((auth_log, "auth"), (web_log, "web")):
@@ -100,7 +105,30 @@ class LogWatcher:
             self._threads.append(t)
 
     def stop(self) -> None:
+        """Signal both tail threads to exit. Returns at once; see join()."""
         self._stop.set()
+
+    def join(self, timeout: float) -> bool:
+        """Wait up to `timeout` seconds in total for this run's tail threads to
+        exit. Returns True when none is still alive. Call after stop().
+
+        A tail thread notices stop within one poll interval, plus the time to
+        finish any line it is already handling.
+        """
+        deadline = time.monotonic() + timeout
+        for t in self._threads:
+            t.join(max(0.0, deadline - time.monotonic()))
+        return not any(t.is_alive() for t in self._threads)
+
+    def reset_state(self) -> None:
+        """Forget failed-login counts and alert cooldowns.
+
+        Used before tailing different files, so attempts seen in the old files
+        can never count toward a violation raised against the new ones.
+        """
+        with self._lock:
+            self._failed_buffer.clear()
+            self._violation_cooldown.clear()
 
     def _make_callback(self, on_violation, on_event=None):
         def callback(line: str, log_type: str) -> None:

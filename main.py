@@ -71,17 +71,28 @@ def _clear_tables(db_path: str) -> None:
     conn.close()
 
 
+def _prepare_database(config: dict) -> None:
+    """Create the schema, then apply storage.clear_on_start.
+
+    Called once from main() at startup, whether or not pipeline.run_on_launch
+    lets run_pipeline() run.
+
+    Demo-rebuild design: each launch reflects the log files as they are now, so
+    the tables are emptied on launch. Set storage.clear_on_start to false in
+    config.yaml to accumulate findings across sessions instead. The schema and
+    the database file persist either way.
+    A missing key means true, so an older config keeps the previous behaviour.
+    """
+    db_path = config["storage"]["db_path"]
+    init_db(db_path)
+    if config.get("storage", {}).get("clear_on_start", True):
+        _clear_tables(db_path)
+
+
 def run_pipeline(auth_log: str, web_log: str, config: dict) -> dict:
     db_path = config["storage"]["db_path"]
 
     init_db(db_path)
-    # Demo-rebuild design: each run reflects the log files as they are now, so
-    # the tables are emptied and rebuilt on launch. Set storage.clear_on_start
-    # to false in config.yaml to accumulate findings across sessions instead.
-    # The schema and the database file persist either way.
-    # A missing key means true, so an older config keeps the previous behaviour.
-    if config.get("storage", {}).get("clear_on_start", True):
-        _clear_tables(db_path)
 
     print("[ 1/5 ] Ingesting logs...")
     events = (preprocess_log_file(auth_log, "auth") +
@@ -137,6 +148,15 @@ def _start_ingest_server(config: dict) -> None:
     time.sleep(1)
 
 
+def _run_on_launch(config: dict) -> bool:
+    """True unless pipeline.run_on_launch is explicitly false.
+
+    A missing key (or a missing/empty pipeline block) means true, so an older
+    config keeps the previous read-everything-at-startup behaviour.
+    """
+    return bool((config.get("pipeline") or {}).get("run_on_launch", True))
+
+
 def _is_first_run(config_path: str) -> bool:
     """Return True when the wizard has never been completed."""
     if not os.path.exists(config_path):
@@ -144,6 +164,47 @@ def _is_first_run(config_path: str) -> bool:
     with open(config_path) as f:
         cfg = yaml.safe_load(f) or {}
     return not cfg.get("setup_complete", False)
+
+
+# Stable taskbar identity for dev-mode runs (python main.py). Windows groups
+# taskbar buttons by AppUserModelID; a script otherwise inherits python.exe's
+# identity and icon, whatever setWindowIcon() says. The packaged exe already
+# has its own identity, so it is left alone.
+_APP_USER_MODEL_ID = "CyberMon.SecurityMonitoring.1"
+
+
+def _set_windows_app_id() -> None:
+    """Give a dev-mode run CyberMon's own taskbar identity.
+
+    Windows only, and skipped in the packaged exe. Must run before any window
+    exists.
+    """
+    if sys.platform != "win32" or hasattr(sys, "_MEIPASS"):
+        return
+    try:
+        import ctypes
+        hr = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(_APP_USER_MODEL_ID)
+    except (AttributeError, OSError):
+        logging.exception("Could not set the Windows AppUserModelID")
+        return
+    if hr != 0:
+        logging.error(
+            "SetCurrentProcessExplicitAppUserModelID failed (HRESULT %#010x)",
+            hr & 0xFFFFFFFF,
+        )
+
+
+def _apply_app_icon(app) -> None:
+    """Use assets/icon.ico, the file the exe build embeds, as the app-wide icon.
+
+    Does nothing when the file isn't there: the packaged exe carries the icon
+    only as its embedded resource, not as a data file, so the exe is unchanged.
+    """
+    icon_path = _resource_path("assets/icon.ico")
+    if not os.path.isfile(icon_path):
+        return
+    from PyQt6.QtGui import QIcon
+    app.setWindowIcon(QIcon(icon_path))
 
 
 def main():
@@ -177,8 +238,11 @@ def main():
 
     # 5. Qt imports inside main() so `from main import run_pipeline` in tests
     #    never triggers Qt at import time.
+    # The taskbar identity must be set before any window exists.
+    _set_windows_app_id()
     from PyQt6.QtWidgets import QApplication, QDialog
     app = QApplication(sys.argv)
+    _apply_app_icon(app)
 
     # 6. First-run: show setup wizard before anything else.
     if _is_first_run(config_path):
@@ -197,50 +261,27 @@ def main():
     auth_log = args.auth_log or config.get("auth_log_path", _data_path("logs/samples/auth.log"))
     web_log  = args.web_log  or config.get("web_log_path",  _data_path("logs/samples/access.log"))
 
-    # 8. Run pipeline (errors are shown in the GUI, never crash the app).
+    # 8. Prepare the database, then run the pipeline (errors are shown in the GUI,
+    #    never crash the app). Schema creation and the clear_on_start wipe run on
+    #    every launch; pipeline.run_on_launch only decides whether the startup
+    #    batch read follows. The live watcher below starts either way.
     pipeline_error: str | None = None
     try:
-        run_pipeline(auth_log, web_log, config)
+        _prepare_database(config)
+        if _run_on_launch(config):
+            run_pipeline(auth_log, web_log, config)
+        else:
+            print("[ skip ] pipeline.run_on_launch is false - startup ingestion skipped.")
     except Exception as exc:
         logging.exception("Pipeline error during startup")
         pipeline_error = str(exc)
 
-    # 9. Start continuous live monitoring.
-    from src.ingestion.watcher import LogWatcher
+    # 9. Start continuous live monitoring. LiveMonitor owns the watcher and its
+    #    database callbacks, so Settings can switch log files mid-session.
+    from src.live_monitor import LiveMonitor
 
-    def _live_event_sink(event: dict, db_path: str) -> None:
-        """Persist each live event exactly like the batch pipeline does.
-
-        Runs before detection, so a violation's triggering_event_id resolves to
-        a real row and the detail view can show the raw log excerpt.
-
-        Note: live mode runs continuously, so the events table grows for as long
-        as the app is running. That is accepted here — there is deliberately no
-        retention/pruning logic.
-        """
-        try:
-            insert_events([event], db_path)
-        except Exception as exc:
-            logging.getLogger(__name__).error("Live event sink error: %s", exc)
-
-    def _live_callback(scored_violation: dict, db_path: str) -> None:
-        try:
-            scored_violation["triggering_event_id"] = find_triggering_event_id(
-                scored_violation, db_path
-            )
-            vid = insert_violation(scored_violation, db_path)
-            insert_risk_score(vid, scored_violation, db_path)
-        except Exception as exc:
-            logging.getLogger(__name__).error("Live callback error: %s", exc)
-
-    db_path = config["storage"]["db_path"]
-    watcher = LogWatcher(config)
-    watcher.start(
-        auth_log=auth_log,
-        web_log=web_log,
-        on_violation=lambda v: _live_callback(v, db_path),
-        on_event=lambda e: _live_event_sink(e, db_path),
-    )
+    monitor = LiveMonitor(config, db_path=config["storage"]["db_path"])
+    monitor.start(auth_log, web_log)
 
     # 10. Network mode: ingest endpoint on a daemon thread.
     if mode == "network":
@@ -249,7 +290,9 @@ def main():
     # 11. Launch desktop window.
     from src.gui.main_window import MainWindow
 
-    window = MainWindow(config)
+    # config_path is passed explicitly so Settings edits the same file main()
+    # loaded; monitor lets Settings restart live monitoring on new log paths.
+    window = MainWindow(config, config_path=config_path, monitor=monitor)
     window.show()
 
     if pipeline_error:
