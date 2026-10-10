@@ -1,4 +1,4 @@
-# CyberMon v2.0
+# CyberMon
 
 > A native desktop cybersecurity monitoring application for Windows.  
 > Ingests SSH authentication logs (Linux syslog and Windows OpenSSH) and Apache logs, detects three classes of policy violation, scores each by risk, and surfaces everything in a live PyQt6 GUI — no browser required.
